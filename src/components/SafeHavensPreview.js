@@ -41,13 +41,14 @@ export default function SafeHavensPreview() {
         ];
 
         const query = `
-            [out:json][timeout:10];
+            [out:json][timeout:15];
             (
               node["leisure"="park"](around:2000,${lat},${lon});
+              way["leisure"="park"](around:2000,${lat},${lon});
               node["amenity"="library"](around:2000,${lat},${lon});
               node["amenity"="cafe"](around:1500,${lat},${lon});
             );
-            out body 10;
+            out center 20;
         `;
 
         let success = false;
@@ -71,10 +72,17 @@ export default function SafeHavensPreview() {
 
                 if (data.elements) {
                     const processed = data.elements
-                        .filter(place => place && place.lat != null && place.lon != null && place.tags)
+                        .filter(place => {
+                            if (!place?.tags) return false;
+                            if (place.lat != null && place.lon != null) return true;
+                            if (place.center?.lat != null && place.center?.lon != null) return true;
+                            return false;
+                        })
                         .map(place => {
+                            const placeLat = place.lat ?? place.center?.lat;
+                            const placeLon = place.lon ?? place.center?.lon;
                             // Calculate simplified distance
-                            const dist = getDistanceFromLatLonInKm(lat, lon, place.lat, place.lon);
+                            const dist = getDistanceFromLatLonInKm(lat, lon, placeLat, placeLon);
 
                             // Determine type and score with safe tag access
                             const tags = place.tags || {};
@@ -93,8 +101,9 @@ export default function SafeHavensPreview() {
                                 score: score
                             };
                         });
-                    // Filter duplicates or bad names if needed
-                    const validPlaces = processed.slice(0, 10); // Take top 10
+                    const validPlaces = processed
+                        .sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance))
+                        .slice(0, 10);
                     setHavens(validPlaces.length > 0 ? validPlaces : []);
                     success = true;
                     break; // Stop if successful
