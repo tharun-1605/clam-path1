@@ -42,6 +42,19 @@ function setView(name) {
   views[name]();
 }
 
+async function saveRemote(collection, payload) {
+  if (!appCtx.firebase?.enabled || !appCtx.firebase.db || !appCtx.firebase.dbMod) return;
+  try {
+    const { addDoc, collection: fbCollection, serverTimestamp } = appCtx.firebase.dbMod;
+    await addDoc(fbCollection(appCtx.firebase.db, collection), {
+      ...payload,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("Remote write failed:", err.message);
+  }
+}
+
 async function renderDashboard() {
   const state = getState();
   const mode = await syncHint();
@@ -53,7 +66,7 @@ async function renderDashboard() {
         <h3>System Status</h3>
         <p><strong>Data mode:</strong> ${mode}</p>
         <p><strong>Auth:</strong> ${appCtx.user ? "Signed in" : "Guest mode"}</p>
-        <button class="btn primary" id="authBtn">${appCtx.user ? "Sign out" : "Continue as guest"}</button>
+        <button class="btn primary" id="authBtn">${appCtx.user ? "Sign out" : appCtx.firebase.enabled ? "Sign in with Google" : "Continue as guest"}</button>
       </article>
       <article class="card span-4">
         <h3>Calm Score</h3>
@@ -95,8 +108,20 @@ async function renderDashboard() {
 
   const authBtn = document.getElementById("authBtn");
   if (authBtn) {
-    authBtn.addEventListener("click", () => {
-      appCtx.user = appCtx.user ? null : { uid: "guest" };
+    authBtn.addEventListener("click", async () => {
+      if (appCtx.firebase.enabled && appCtx.firebase.auth && appCtx.firebase.authMod) {
+        const { GoogleAuthProvider, signInWithPopup, signOut } = appCtx.firebase.authMod;
+        if (appCtx.user) {
+          await signOut(appCtx.firebase.auth);
+          appCtx.user = null;
+        } else {
+          const provider = new GoogleAuthProvider();
+          const result = await signInWithPopup(appCtx.firebase.auth, provider);
+          appCtx.user = result.user;
+        }
+      } else {
+        appCtx.user = appCtx.user ? null : { uid: "guest" };
+      }
       renderDashboard();
     });
   }
@@ -109,6 +134,7 @@ async function renderDashboard() {
     );
     setCalmScore(score);
     appendItem("checkIns", { score, at: Date.now() });
+    saveRemote("checkins", { score, uid: appCtx.user?.uid || "guest" });
     document.getElementById("scoreOut").textContent = `Calm score set to ${score} at ${fmtTime()}`;
     setTimeout(() => renderDashboard(), 500);
   });
@@ -134,6 +160,8 @@ function renderRoute() {
       <button class="btn primary" style="margin-top:10px" id="routeBtn">Generate quiet route</button>
       <p id="routeText" class="muted"></p>
       <div id="routeLinks"></div>
+      <button class="btn primary" style="margin-top:10px" id="arBtn">Start AR Guidance</button>
+      <div id="arGuide"></div>
     </article>
     <article class="card" style="margin-top:12px">
       <h3>Safe Havens (${profile.city})</h3>
@@ -165,6 +193,21 @@ function renderRoute() {
       recommendation: rec,
       at: Date.now(),
     });
+    saveRemote("routes", { from, to, priority, recommendation: rec, uid: appCtx.user?.uid || "guest" });
+  });
+
+  document.getElementById("arBtn")?.addEventListener("click", () => {
+    const from = document.getElementById("from").value.trim() || "Current location";
+    const to = document.getElementById("to").value.trim() || "Destination";
+    document.getElementById("arGuide").innerHTML = `
+      <article class="card" style="margin-top:12px">
+        <h3>AR Navigation Guidance (Desktop Simulation)</h3>
+        <p>1. -> Walk straight from <strong>${from}</strong> for 200m.</p>
+        <p>2. <- Turn left and stay on low-traffic lane.</p>
+        <p>3. -> Continue 500m avoiding peak crowd clusters.</p>
+        <p>4. Arrive at <strong>${to}</strong>.</p>
+      </article>
+    `;
   });
 }
 
@@ -197,6 +240,7 @@ function renderSupport() {
         const smsUrl = phone ? `sms:${phone}?body=${encodeURIComponent(message)}` : "";
 
         appendItem("supportEvents", { lat, lng, message, at: Date.now() });
+        saveRemote("supportEvents", { lat, lng, message, uid: appCtx.user?.uid || "guest" });
         setCalmScore(Math.max(10, getState().calmScore - 20));
 
         out.textContent = "Support alert ready. Share immediately.";
@@ -241,6 +285,7 @@ function renderCommunity() {
     if (!place || !city || !note) return;
 
     appendItem("communityReports", { place, city, note, at: Date.now(), status: "pending-validation" });
+    saveRemote("communityReports", { place, city, note, status: "pending-validation", uid: appCtx.user?.uid || "guest" });
     renderCommunity();
   });
 }
@@ -253,6 +298,7 @@ function renderHistory() {
     <article class="card">
       <h3>History Tracking & Trip Analytics</h3>
       <p class="muted">Includes route generation, panic events, and calm check-ins.</p>
+      <button class="btn primary" id="exportBtn">Export sensory data</button>
       <div>
         ${rows.length
           ? rows
@@ -266,6 +312,24 @@ function renderHistory() {
       </div>
     </article>
   `;
+
+  document.getElementById("exportBtn")?.addEventListener("click", () => {
+    const csvRows = [
+      ["type", "timestamp", "details"],
+      ...rows.map((r) => {
+        if (r.from) return ["route", fmtTime(r.at), `${r.from} -> ${r.to} (${r.priority})`];
+        if (r.lat) return ["support", fmtTime(r.at), `${r.lat},${r.lng}`];
+        return ["checkin", fmtTime(r.at), `calm_score=${r.score}`];
+      }),
+    ];
+    const csv = csvRows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `neuro-nav-sensory-export-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
 }
 
 function renderProfile() {
@@ -294,12 +358,22 @@ function renderProfile() {
       triggers: document.getElementById("pTriggers").value.trim(),
       calmingMethods: document.getElementById("pCalm").value.trim(),
     });
+    saveRemote("profiles", { ...getState().profile, uid: appCtx.user?.uid || "guest", updatedAt: Date.now() });
     document.getElementById("profileOut").textContent = `Profile saved at ${fmtTime()}`;
   });
 }
 
 async function bootstrap() {
   appCtx.firebase = await initFirebase();
+  if (appCtx.firebase.enabled && appCtx.firebase.auth && appCtx.firebase.authMod) {
+    const { onAuthStateChanged } = appCtx.firebase.authMod;
+    onAuthStateChanged(appCtx.firebase.auth, (user) => {
+      appCtx.user = user || null;
+      if (navButtons.some((b) => b.classList.contains("active") && b.dataset.view === "dashboard")) {
+        renderDashboard();
+      }
+    });
+  }
   setView("dashboard");
 }
 
