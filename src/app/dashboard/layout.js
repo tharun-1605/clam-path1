@@ -9,7 +9,7 @@ export default function DashboardLayout({ children }) {
             <main style={{
                 flex: 1,
                 marginLeft: '300px', // Space for fixed sidebar
-                padding: '2.5vh 30px 2.5vh 0', // Padding to match sidebar margin
+                padding: '2.5vh 30px', // Balanced padding for centering
                 position: 'relative'
             }}>
                 {children}
