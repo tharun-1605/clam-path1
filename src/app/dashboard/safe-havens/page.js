@@ -1,13 +1,23 @@
 'use client';
 
 const allHavens = [
-    { id: 1, name: "Riverside Park", type: "Park", distance: "0.2 mi", rating: 4.8, score: 9.2, features: ["Benches", "Shade", "Nature"] },
-    { id: 2, name: "Central Library", type: "Library", distance: "0.5 mi", rating: 4.9, score: 8.8, features: ["Quiet Zones", "WiFi", "AC"] },
-    { id: 3, name: "Serenity Cafe", type: "Cafe", distance: "0.6 mi", rating: 4.5, score: 7.9, features: ["Low Music", "Cozy Seating"] },
-    { id: 4, name: "City Museum", type: "Museum", distance: "1.2 mi", rating: 4.7, score: 8.5, features: ["Quiet Halls", "Visual Art"] },
+    { id: 1, name: "Riverside Park", type: "Park", distance: "0.2 mi", rating: 4.8, score: 9.2, features: ["Benches", "Shade", "Nature"], lat: 40.8003, lng: -73.9716 },
+    { id: 2, name: "Central Library", type: "Library", distance: "0.5 mi", rating: 4.9, score: 8.8, features: ["Quiet Zones", "WiFi", "AC"], lat: 40.6728, lng: -73.9683 },
+    { id: 3, name: "Serenity Cafe", type: "Cafe", distance: "0.6 mi", rating: 4.5, score: 7.9, features: ["Low Music", "Cozy Seating"], lat: 40.8256, lng: -73.9497 },
+    { id: 4, name: "City Museum", type: "Museum", distance: "1.2 mi", rating: 4.7, score: 8.5, features: ["Quiet Halls", "Visual Art"], lat: 40.7925, lng: -73.9519 },
 ];
 
 export default function SafeHavensPage() {
+    const handleNavigate = (haven) => {
+        if (haven.lat && haven.lng) {
+            const url = `https://www.google.com/maps/dir/?api=1&destination=${haven.lat},${haven.lng}`;
+            window.open(url, '_blank');
+        } else {
+            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(haven.name)}`;
+            window.open(url, '_blank');
+        }
+    };
+
     return (
         <div className="container-max" style={{ padding: '40px 20px' }}>
             <h1 className="text-gradient" style={{ marginBottom: '30px' }}>Safe Havens Directory</h1>
@@ -37,7 +47,13 @@ export default function SafeHavensPage() {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                             <button className="btn-secondary" style={{ width: '100%' }}>Details</button>
-                            <button className="btn-primary" style={{ width: '100%' }}>Navigate</button>
+                            <button
+                                className="btn-primary"
+                                style={{ width: '100%' }}
+                                onClick={() => handleNavigate(haven)}
+                            >
+                                Navigate
+                            </button>
                         </div>
                     </div>
                 ))}
