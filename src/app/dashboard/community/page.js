@@ -64,7 +64,7 @@ export default function CommunityPage() {
                 Help make the map better for everyone. Your reports help us calculate real-time Calm Scores.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
+            <div className="community-grid">
 
                 {/* Visual Report Form */}
                 <div className="card">
@@ -124,7 +124,7 @@ export default function CommunityPage() {
                 </div>
 
                 {/* Video Upload Section */}
-                <div className="glass-panel" style={{ padding: '30px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div>
                         <h2 style={{ fontSize: '1.5rem', marginBottom: '10px' }}>📸 Upload Scene Video</h2>
                         <p style={{ fontSize: '0.9rem', color: 'var(--neutral-text-light)' }}>
@@ -135,6 +135,20 @@ export default function CommunityPage() {
                 </div>
 
             </div>
+
+            <style jsx>{`
+                .community-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 18px;
+                }
+
+                @media (max-width: 980px) {
+                    .community-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+            `}</style>
         </div>
     );
 }
