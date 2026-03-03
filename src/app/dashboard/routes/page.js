@@ -2,10 +2,12 @@
 
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { useAuth } from '../../../components/AuthContext';
 
 const ROUTE_HISTORY_KEY = 'neuro-nav-route-history';
 
 export default function RoutesPage() {
+    const { user } = useAuth();
     const [origin, setOrigin] = useState('');
     const [destination, setDestination] = useState('');
     const [loading, setLoading] = useState(false);
@@ -48,6 +50,8 @@ export default function RoutesPage() {
             saveRouteToHistory({
                 id: Date.now(),
                 createdAt: new Date().toISOString(),
+                userId: user?.uid || null,
+                userEmail: user?.email || null,
                 origin: origin.trim(),
                 destination: destination.trim(),
                 duration: nextRoute.duration,
@@ -66,6 +70,8 @@ export default function RoutesPage() {
             saveRouteToHistory({
                 id: Date.now(),
                 createdAt: new Date().toISOString(),
+                userId: user?.uid || null,
+                userEmail: user?.email || null,
                 origin: origin.trim(),
                 destination: destination.trim(),
                 duration: fallbackRoute.duration,
