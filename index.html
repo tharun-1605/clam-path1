@@ -1,0 +1,33 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neuro Nav PC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-bg"></div>
+    <main class="layout">
+      <aside class="sidebar">
+        <h1>Neuro Nav</h1>
+        <p>Autism-friendly navigation and sensory support.</p>
+        <nav>
+          <button data-view="dashboard" class="active">Dashboard</button>
+          <button data-view="route">Route Planner</button>
+          <button data-view="support">Panic Support</button>
+          <button data-view="community">Community Spaces</button>
+          <button data-view="history">History</button>
+          <button data-view="profile">Profile</button>
+        </nav>
+      </aside>
+
+      <section class="content" id="content"></section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
