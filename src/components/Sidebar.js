@@ -4,13 +4,13 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from './AuthContext';
-import { useTheme } from './ThemeContext'; // Import hook
-import { LogOut, Map, Navigation, Settings, User, Moon, Sun, Shield, Heart, History, AlertCircle } from 'lucide-react'; // Import icons
+import { useTheme } from './ThemeContext';
+import { AlertCircle, History, LogOut, Map, Moon, Navigation, Settings, Shield, Sun, User, X, Heart } from 'lucide-react';
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate, onClose, mobile = false }) {
     const pathname = usePathname();
     const { logout } = useAuth();
-    const { theme, toggleTheme } = useTheme(); // Use hook
+    const { theme, toggleTheme } = useTheme();
 
     const navItems = [
         { name: 'Live Map', href: '/dashboard', icon: Map },
@@ -20,98 +20,89 @@ export default function Sidebar() {
         { name: 'History', href: '/dashboard/history', icon: History },
         { name: 'Panic Mode', href: '/panic', icon: AlertCircle },
         { name: 'Profile', href: '/dashboard/profile', icon: User },
-        { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+        { name: 'Settings', href: '/dashboard/settings', icon: Settings }
     ];
 
     return (
-        <motion.div
-            initial={{ x: -100, opacity: 0 }}
+        <motion.aside
+            initial={{ x: mobile ? -16 : -28, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             className="glass-panel"
             style={{
-                width: '240px',
-                height: '95vh',
+                width: '100%',
+                height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                padding: '20px',
-                borderRadius: '20px',
-                overflowY: 'auto' // Allow scrolling if list is long
+                padding: '18px'
             }}
         >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '30px', paddingLeft: '5px' }}>
-                <div style={{
-                    width: '36px', height: '36px', borderRadius: '10px',
-                    background: 'linear-gradient(135deg, var(--primary-teal), var(--secondary-lavender))',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: 'white', fontWeight: 'bold', fontSize: '1.2rem'
-                }}>
-                    N
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '12px',
+                        background: 'linear-gradient(135deg, var(--primary-teal), var(--secondary-amber))',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 900
+                    }}>
+                        N
+                    </div>
+                    <h1 className="text-gradient" style={{ fontSize: '1.22rem', fontWeight: 800 }}>
+                        Neuro-Nav
+                    </h1>
                 </div>
-                <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }} className="text-gradient">
-                    Neuro-Nav
-                </h1>
+                {mobile && (
+                    <button type="button" onClick={onClose} className="btn-secondary" style={{ padding: '8px 10px' }}>
+                        <X size={16} />
+                    </button>
+                )}
             </div>
 
-            <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <nav style={{ flex: 1, display: 'grid', gap: '8px' }}>
                 {navItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
-                        <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: '12px',
-                                padding: '12px 16px',
-                                borderRadius: '12px',
-                                background: isActive ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
-                                color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                                transition: 'all 0.2s',
-                                cursor: 'pointer',
-                                borderLeft: isActive ? '3px solid var(--primary)' : '3px solid transparent'
-                            }}>
-                                <item.icon size={20} />
-                                <span style={{ fontWeight: 500 }}>{item.name}</span>
+                        <Link key={item.href} href={item.href} onClick={onNavigate}>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '11px',
+                                    padding: '11px 12px',
+                                    borderRadius: '12px',
+                                    border: `1px solid ${isActive ? 'rgba(0, 168, 168, 0.45)' : 'transparent'}`,
+                                    background: isActive ? 'rgba(0, 168, 168, 0.12)' : 'transparent',
+                                    color: isActive ? 'var(--primary-teal-dark)' : 'var(--neutral-text-light)',
+                                    transition: 'all .18s ease'
+                                }}
+                            >
+                                <item.icon size={18} />
+                                <span style={{ fontSize: '.95rem', fontWeight: 600 }}>{item.name}</span>
                             </div>
                         </Link>
                     );
                 })}
             </nav>
 
-            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Theme Toggle */}
-                <button
-                    onClick={toggleTheme}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        padding: '12px 16px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer',
-                        width: '100%',
-                        textAlign: 'left'
-                    }}
-                >
-                    {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-                    <span style={{ fontWeight: 500 }}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+            <div style={{ marginTop: '14px', display: 'grid', gap: '8px' }}>
+                <button type="button" onClick={toggleTheme} className="btn-secondary" style={{ justifyContent: 'flex-start' }}>
+                    {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                    {theme === 'dark' ? 'Light Theme' : 'Dark Theme'}
                 </button>
-
                 <button
+                    type="button"
                     onClick={logout}
-                    style={{
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        padding: '12px 16px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--danger)',
-                        cursor: 'pointer',
-                        width: '100%',
-                        textAlign: 'left',
-                        marginTop: '10px'
-                    }}
+                    className="btn-secondary"
+                    style={{ justifyContent: 'flex-start', color: 'var(--accent-coral-dark)' }}
                 >
-                    <LogOut size={20} />
-                    <span style={{ fontWeight: 500 }}>Log Out</span>
+                    <LogOut size={16} />
+                    Log Out
                 </button>
             </div>
-        </motion.div>
+        </motion.aside>
     );
 }

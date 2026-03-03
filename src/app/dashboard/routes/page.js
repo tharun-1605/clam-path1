@@ -1,62 +1,168 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '../../../components/AuthContext';
+
+const ROUTE_HISTORY_KEY = 'neuro-nav-route-history';
+const OVERPASS_SERVERS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+];
 
 export default function RoutesPage() {
+    const { user } = useAuth();
+    const [originMode, setOriginMode] = useState('manual');
     const [origin, setOrigin] = useState('');
     const [destination, setDestination] = useState('');
     const [loading, setLoading] = useState(false);
     const [route, setRoute] = useState(null);
+    const [locating, setLocating] = useState(false);
+    const [currentOrigin, setCurrentOrigin] = useState({
+        label: '',
+        lat: null,
+        lon: null,
+        error: ''
+    });
+
+    const saveRouteToHistory = (entry) => {
+        try {
+            const current = JSON.parse(localStorage.getItem(ROUTE_HISTORY_KEY) || '[]');
+            const next = [entry, ...current].slice(0, 100);
+            localStorage.setItem(ROUTE_HISTORY_KEY, JSON.stringify(next));
+        } catch (err) {
+            console.error('Failed to save route history:', err);
+        }
+    };
+
+    const detectCurrentLocation = () => {
+        if (!navigator.geolocation) {
+            setCurrentOrigin((prev) => ({ ...prev, error: 'Geolocation is not supported in this browser.' }));
+            return;
+        }
+
+        setLocating(true);
+        setCurrentOrigin((prev) => ({ ...prev, error: '' }));
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                const label = await reverseGeocode(lat, lon);
+                setCurrentOrigin({ label, lat, lon, error: '' });
+                setLocating(false);
+            },
+            () => {
+                setCurrentOrigin((prev) => ({
+                    ...prev,
+                    error: 'Could not fetch current location. Please allow location permission.'
+                }));
+                setLocating(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        );
+    };
 
     const handleSearch = async (e) => {
         e.preventDefault();
-        if (!origin || !destination) return;
+        if ((!origin && originMode === 'manual') || !destination) return;
 
         setLoading(true);
         setRoute(null);
 
         try {
-            // 1. Geocode Origin
-            const coords1 = await getCoordinates(origin);
-            if (!coords1) throw new Error(`Could not find location: ${origin}`);
+            let coords1;
+            let startLabel;
 
-            // 2. Geocode Destination
+            if (originMode === 'current') {
+                if (currentOrigin.lat == null || currentOrigin.lon == null) {
+                    throw new Error('Current location is not available yet. Please allow location access.');
+                }
+                coords1 = { lat: currentOrigin.lat, lon: currentOrigin.lon };
+                startLabel = currentOrigin.label || `${Number(currentOrigin.lat).toFixed(4)}, ${Number(currentOrigin.lon).toFixed(4)}`;
+            } else {
+                coords1 = await getCoordinates(origin);
+                if (!coords1) throw new Error(`Could not find location: ${origin}`);
+                startLabel = origin.trim();
+            }
+
             const coords2 = await getCoordinates(destination);
             if (!coords2) throw new Error(`Could not find location: ${destination}`);
 
-            // 3. Get Route Stats from OSRM
             const stats = await getRouteStats(coords1, coords2);
 
-            setRoute({
+            const nextRoute = {
                 duration: stats.duration,
                 distance: stats.distance,
-                noiseLevel: 'Quiet (42dB)', // Still estimated based on route type
-                description: `A sensory-safe route from ${origin} to ${destination}. Real-time data fetched via OSRM.`
-            });
+                noiseLevel: stats.noiseLevel,
+                description: `A sensory-safe route from ${startLabel} to ${destination}. Real-time data fetched via OSRM.`
+            };
 
+            setRoute(nextRoute);
+            saveRouteToHistory({
+                id: Date.now(),
+                createdAt: new Date().toISOString(),
+                userId: user?.uid || null,
+                userEmail: user?.email || null,
+                origin: startLabel,
+                destination: destination.trim(),
+                duration: nextRoute.duration,
+                distance: nextRoute.distance,
+                calmScore: 8.5
+            });
         } catch (err) {
-            console.error("Routing Error:", err);
-            // Fallback for demo if API fails
-            setRoute({
+            console.error('Routing Error:', err);
+            const fallbackRoute = {
                 duration: 'Calculated',
                 distance: 'Unknown',
-                noiseLevel: 'Quiet (42dB)',
+                noiseLevel: 'Estimated (50 dB)',
                 description: `Could not fetch exact stats (${err.message}). Showing map path.`
+            };
+            setRoute(fallbackRoute);
+            saveRouteToHistory({
+                id: Date.now(),
+                createdAt: new Date().toISOString(),
+                userId: user?.uid || null,
+                userEmail: user?.email || null,
+                origin: originMode === 'current' ? (currentOrigin.label || 'Current Location') : origin.trim(),
+                destination: destination.trim(),
+                duration: fallbackRoute.duration,
+                distance: fallbackRoute.distance,
+                calmScore: 7.5
             });
         } finally {
             setLoading(false);
         }
     };
 
-    // Helper: Geocode Address -> Lat/Lon (Nominatim)
+    async function reverseGeocode(lat, lon) {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=14&addressdetails=1`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('reverse geocode failed');
+            const data = await res.json();
+            const address = data?.address || {};
+            return (
+                address.suburb ||
+                address.neighbourhood ||
+                address.city_district ||
+                address.city ||
+                address.town ||
+                address.village ||
+                data?.display_name?.split(',')?.[0]?.trim() ||
+                `${lat.toFixed(4)}, ${lon.toFixed(4)}`
+            );
+        } catch {
+            return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        }
+    }
+
     async function getCoordinates(address) {
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
             const data = await res.json();
-            if (data && data.length > 0) {
-                return { lat: data[0].lat, lon: data[0].lon };
-            }
+            if (data && data.length > 0) return { lat: data[0].lat, lon: data[0].lon };
             return null;
         } catch (e) {
             console.error(e);
@@ -64,62 +170,144 @@ export default function RoutesPage() {
         }
     }
 
-    // Helper: OSRM Routing -> Distance/Duration
     async function getRouteStats(c1, c2) {
         try {
-            // OSRM expects lon,lat
-            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${c1.lon},${c1.lat};${c2.lon},${c2.lat}?overview=false`);
+            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${c1.lon},${c1.lat};${c2.lon},${c2.lat}?overview=full&geometries=geojson`);
             const data = await res.json();
             if (data.routes && data.routes.length > 0) {
                 const r = data.routes[0];
-                // Distance is in meters, Duration in seconds
                 const distKm = (r.distance / 1000).toFixed(1);
                 const durMin = Math.round(r.duration / 60);
-
                 const hours = Math.floor(durMin / 60);
                 const mins = durMin % 60;
-
+                const noiseLevel = await estimateNoiseLevel(r, Number(distKm));
                 return {
                     distance: `${distKm} km`,
-                    duration: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`
+                    duration: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`,
+                    noiseLevel
                 };
             }
         } catch (e) {
             console.error(e);
         }
-        return { distance: 'Unknown', duration: 'Unknown' };
+        return { distance: 'Unknown', duration: 'Unknown', noiseLevel: 'Estimated (50 dB)' };
     }
 
-    return (
-        <div style={{ display: 'flex', gap: '20px', height: '90vh', padding: '20px' }}>
-            {/* Left Panel: Inputs */}
-            <motion.div
-                initial={{ x: -50, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                style={{ width: '400px', display: 'flex', flexDirection: 'column', gap: '20px' }}
-            >
-                <h1 className="text-gradient" style={{ fontSize: '2rem', fontWeight: 'bold' }}>Quiet Route Planner</h1>
+    async function estimateNoiseLevel(routeObj, distKm) {
+        let db = 38 + (distKm * 0.6);
 
-                <div className="glass-panel" style={{ padding: '2rem' }}>
-                    <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        try {
+            const points = routeObj?.geometry?.coordinates || [];
+            if (points.length > 0) {
+                const mid = points[Math.floor(points.length / 2)];
+                const midLon = mid[0];
+                const midLat = mid[1];
+
+                const query = `
+                    [out:json][timeout:10];
+                    (
+                      way["highway"~"motorway|trunk|primary|secondary"](around:900,${midLat},${midLon});
+                      way["railway"](around:900,${midLat},${midLon});
+                      node["amenity"~"bus_station|fuel|marketplace"](around:900,${midLat},${midLon});
+                    );
+                    out tags 60;
+                `;
+
+                let elements = [];
+                for (const server of OVERPASS_SERVERS) {
+                    try {
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 5000);
+                        const response = await fetch(server, { method: 'POST', body: query, signal: controller.signal });
+                        clearTimeout(timeout);
+                        if (!response.ok) continue;
+                        const data = await response.json();
+                        elements = data?.elements || [];
+                        if (elements.length) break;
+                    } catch {
+                        // try next server
+                    }
+                }
+
+                if (elements.length) {
+                    let majorRoads = 0;
+                    let rail = 0;
+                    let transportNodes = 0;
+
+                    for (const el of elements) {
+                        const tags = el?.tags || {};
+                        if (tags.highway) majorRoads += 1;
+                        if (tags.railway) rail += 1;
+                        if (tags.amenity === 'bus_station' || tags.amenity === 'fuel' || tags.amenity === 'marketplace') {
+                            transportNodes += 1;
+                        }
+                    }
+
+                    db += Math.min(majorRoads, 12) * 1.4;
+                    db += Math.min(rail, 4) * 2.2;
+                    db += Math.min(transportNodes, 10) * 0.7;
+                }
+            }
+        } catch {
+            // fallback to base estimate
+        }
+
+        const bounded = Math.max(35, Math.min(78, db));
+        const rounded = Math.round(bounded);
+        if (rounded <= 45) return `Quiet (${rounded} dB)`;
+        if (rounded <= 58) return `Moderate (${rounded} dB)`;
+        return `Busy (${rounded} dB)`;
+    }
+
+    useEffect(() => {
+        if (originMode === 'current' && (currentOrigin.lat == null || currentOrigin.lon == null) && !locating) {
+            detectCurrentLocation();
+        }
+    }, [originMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const startForMaps = originMode === 'current' && currentOrigin.lat != null && currentOrigin.lon != null
+        ? `${currentOrigin.lat},${currentOrigin.lon}`
+        : origin;
+
+    return (
+        <div className="routes-grid">
+            <motion.div
+                initial={{ y: 14, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+                <h1 className="text-gradient" style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 800 }}>
+                    Quiet Route Planner
+                </h1>
+
+                <div className="glass-panel" style={{ padding: '1.1rem' }}>
+                    <form onSubmit={handleSearch} style={{ display: 'grid', gap: '1rem' }}>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--neutral-text-light)' }}>Start Location</label>
-                            <input
-                                type="text"
-                                className="glass-button"
-                                style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '1rem' }}
-                                onChange={(e) => setOrigin(e.target.value)}
-                                value={origin}
-                                placeholder="e.g. Coimbatore"
-                            />
+                            <label style={{ display: 'block', marginBottom: '0.45rem', color: 'var(--neutral-text-light)' }}>Start Option</label>
+                            <select value={originMode} onChange={(e) => setOriginMode(e.target.value)}>
+                                <option value="manual">Enter Manually</option>
+                                <option value="current">Use Current Location</option>
+                            </select>
                         </div>
 
                         <div>
-                            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--neutral-text-light)' }}>Destination</label>
+                            <label style={{ display: 'block', marginBottom: '0.45rem', color: 'var(--neutral-text-light)' }}>Start Location</label>
                             <input
                                 type="text"
-                                className="glass-button"
-                                style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '1rem' }}
+                                onChange={(e) => setOrigin(e.target.value)}
+                                value={originMode === 'current' ? (locating ? 'Detecting your location...' : (currentOrigin.label || 'Current location not detected')) : origin}
+                                placeholder={originMode === 'current' ? 'Current Location' : 'e.g. Coimbatore'}
+                                disabled={originMode === 'current'}
+                            />
+                            {originMode === 'current' && currentOrigin.error && (
+                                <div style={{ marginTop: '6px', fontSize: '.82rem', color: 'var(--accent-coral-dark)' }}>{currentOrigin.error}</div>
+                            )}
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.45rem', color: 'var(--neutral-text-light)' }}>Destination</label>
+                            <input
+                                type="text"
                                 onChange={(e) => setDestination(e.target.value)}
                                 value={destination}
                                 placeholder="e.g. Madurai"
@@ -127,144 +315,182 @@ export default function RoutesPage() {
                         </div>
 
                         <button type="submit" className="btn-primary" disabled={loading}>
-                            {loading ? 'Simulating Path...' : 'Find Quiet Route'}
+                            {loading ? 'Analyzing Route...' : 'Find Quiet Route'}
                         </button>
                     </form>
                 </div>
 
                 {route && !loading && (
                     <motion.div
-                        initial={{ y: 20, opacity: 0 }}
+                        initial={{ y: 10, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         className="glass-panel"
-                        style={{ padding: '2rem', borderLeft: '4px solid var(--success)' }}
+                        style={{ padding: '1rem', borderLeft: '4px solid var(--success)' }}
                     >
-                        <h3 style={{ marginBottom: '1rem', color: 'var(--success)' }}>Route Optimized</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                        <h3 style={{ marginBottom: '.9rem', color: 'var(--success)' }}>Route Optimized</h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '.8rem', marginBottom: '.9rem' }}>
                             <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Est. Time</span>
-                                <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{route.duration}</span>
+                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Est. Time</span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.duration}</span>
                             </div>
                             <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Distance</span>
-                                <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{route.distance}</span>
+                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Distance</span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.distance}</span>
                             </div>
                             <div>
-                                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Avg Noise</span>
-                                <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{route.noiseLevel}</span>
+                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Avg Noise</span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.noiseLevel}</span>
                             </div>
                         </div>
-                        <p style={{ color: 'var(--foreground)', fontSize: '0.9rem' }}>{route.description}</p>
+                        <p style={{ color: 'var(--foreground)', fontSize: '.88rem' }}>{route.description}</p>
                     </motion.div>
                 )}
             </motion.div>
 
-            {/* Right Panel: Simulated Map View */}
-            <div className="glass-panel" style={{ flex: 1, borderRadius: '20px', overflow: 'hidden', position: 'relative', background: '#0f172a' }}>
-                {/* Simulation UI Layer */}
-                <div style={{
-                    width: '100%', height: '100%',
-                    background: 'radial-gradient(circle at center, #1e293b 0%, #020617 100%)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    position: 'relative'
-                }}>
-                    {/* Techy Grid Background */}
-                    <div style={{
-                        position: 'absolute', inset: 0, opacity: 0.1,
-                        backgroundImage: 'linear-gradient(#38bdf8 1px, transparent 1px), linear-gradient(90deg, #38bdf8 1px, transparent 1px)',
-                        backgroundSize: '40px 40px'
-                    }}></div>
-
+            <div className="glass-panel map-panel">
+                <div className="map-stage">
+                    <div className="tech-grid"></div>
                     {loading ? (
                         <div style={{ textAlign: 'center', zIndex: 10 }}>
-                            <div className="animate-pulse" style={{ width: '80px', height: '80px', borderRadius: '50%', border: '4px solid #38bdf8', borderTopColor: 'transparent', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }}></div>
+                            <div className="spinner"></div>
                             <h3 className="text-gradient">Analyzing Acoustic Data...</h3>
                         </div>
                     ) : route ? (
-                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                            {/* Embedded Map View */}
-                            <div style={{ flex: 1, width: '100%', borderRadius: '20px', overflow: 'hidden', background: '#e5e7eb' }}>
-                                <iframe
-                                    width="100%"
-                                    height="100%"
-                                    frameBorder="0"
-                                    style={{ border: 0 }}
-                                    src={`https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&output=embed`}
-                                    allowFullScreen
-                                    loading="lazy"
-                                ></iframe>
-                            </div>
+                        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                            <iframe
+                                width="100%"
+                                height="100%"
+                                frameBorder="0"
+                                style={{ border: 0 }}
+                                src={`https://maps.google.com/maps?saddr=${encodeURIComponent(startForMaps)}&daddr=${encodeURIComponent(destination)}&output=embed`}
+                                allowFullScreen
+                                loading="lazy"
+                            ></iframe>
 
-                            {/* Action Buttons Overlay */}
-                            <div style={{
-                                position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-                                display: 'flex', gap: '15px', zIndex: 20
-                            }}>
+                            <div className="map-actions">
                                 <a
-                                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`}
+                                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startForMaps)}&destination=${encodeURIComponent(destination)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="glass-button"
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '10px 20px', borderRadius: '50px',
-                                        background: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(10px)',
-                                        border: '1px solid rgba(255,255,255,0.2)'
-                                    }}
+                                    className="btn-secondary"
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
-                                    <span>Open Full Map</span>
+                                    Open Full Map
                                 </a>
-
                                 <a
-                                    href={`https://wa.me/?text=${encodeURIComponent(`Check out this sensory-safe route from ${origin} to ${destination}: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`)}`}
+                                    href={`https://wa.me/?text=${encodeURIComponent(`Check out this sensory-safe route from ${startForMaps} to ${destination}: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startForMaps)}&destination=${encodeURIComponent(destination)}`)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="glass-button"
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '10px 20px', borderRadius: '50px',
-                                        background: '#25D366', color: 'white',
-                                        border: 'none', fontWeight: 600
-                                    }}
+                                    className="btn-primary"
                                 >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
-                                    </svg>
-                                    <span>Share Route</span>
+                                    Share
                                 </a>
-
                                 <button
+                                    type="button"
+                                    className="btn-secondary"
                                     onClick={() => {
-                                        const msg = new SpeechSynthesisUtterance(`Starting quiet route from ${origin} to ${destination}. This path is optimized for low noise levels.`);
+                                        const msg = new SpeechSynthesisUtterance(`Starting quiet route from ${startForMaps} to ${destination}. This path is optimized for low noise levels.`);
                                         window.speechSynthesis.speak(msg);
                                     }}
-                                    className="glass-button"
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '10px 20px', borderRadius: '50px',
-                                        background: 'rgba(255, 255, 255, 0.9)', color: 'black',
-                                        border: 'none', fontWeight: 600
-                                    }}
                                 >
-                                    <span>🗣️</span> Speak
+                                    Speak
                                 </button>
                             </div>
                         </div>
                     ) : (
-                        <div style={{ textAlign: 'center', zIndex: 10, opacity: 0.7 }}>
+                        <div style={{ textAlign: 'center', zIndex: 10, opacity: 0.78 }}>
                             <h3 style={{ color: 'var(--text-muted)' }}>Enter locations to generate path</h3>
                         </div>
                     )}
                 </div>
+            </div>
 
-                <style jsx>{`
+            <style jsx>{`
+                .routes-grid {
+                    display: grid;
+                    grid-template-columns: minmax(280px, 390px) minmax(0, 1fr);
+                    gap: 14px;
+                    min-height: 100%;
+                }
+
+                .map-panel {
+                    overflow: hidden;
+                    min-height: 500px;
+                    padding: 0;
+                    border-radius: 22px;
+                }
+
+                .map-stage {
+                    width: 100%;
+                    height: 100%;
+                    min-height: 500px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    position: relative;
+                    background: radial-gradient(circle at center, #1a2740 0%, #0a1222 100%);
+                }
+
+                .tech-grid {
+                    position: absolute;
+                    inset: 0;
+                    opacity: 0.1;
+                    background-image: linear-gradient(#39c8c8 1px, transparent 1px), linear-gradient(90deg, #39c8c8 1px, transparent 1px);
+                    background-size: 32px 32px;
+                }
+
+                .spinner {
+                    width: 72px;
+                    height: 72px;
+                    border-radius: 50%;
+                    border: 4px solid #39c8c8;
+                    border-top-color: transparent;
+                    animation: spin 0.9s linear infinite;
+                    margin: 0 auto 16px;
+                }
+
+                .map-actions {
+                    position: absolute;
+                    left: 50%;
+                    bottom: 12px;
+                    transform: translateX(-50%);
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                    justify-content: center;
+                    padding: 0 10px;
+                }
+
+                @media (max-width: 1100px) {
+                    .routes-grid {
+                        grid-template-columns: 1fr;
+                    }
+
+                    .map-panel,
+                    .map-stage {
+                        min-height: 420px;
+                    }
+                }
+
+                @media (max-width: 680px) {
+                    .map-panel,
+                    .map-stage {
+                        min-height: 320px;
+                    }
+
+                    .map-actions {
+                        position: static;
+                        transform: none;
+                        padding: 12px;
+                        margin-top: -2px;
+                        background: linear-gradient(to top, rgba(7, 14, 27, 0.82), rgba(7, 14, 27, 0.15));
+                    }
+                }
+
                 @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
                 }
             `}</style>
-            </div>
         </div>
     );
 }

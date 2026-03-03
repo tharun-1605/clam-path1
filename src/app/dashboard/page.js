@@ -141,23 +141,17 @@ export default function DashboardPage() {
     }
 
     return (
-        <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(240px, 1fr) minmax(400px, 2fr) minmax(260px, 1fr)', // Reduced widths for better fit
-            gap: '20px',
-            height: '100%',
-            paddingBottom: '20px'
-        }}>
+        <div className="live-grid">
 
             {/* Left Column: Havens & Info */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden' }}>
                 <SafeHavensPreview />
             </div>
 
             {/* Center Column: Map & Score */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden' }}>
                 <CalmScoreHeader score={calmScore} location={locationLabel} />
-                <div className="glass-panel" style={{ flex: 1, position: 'relative', overflow: 'hidden', padding: 0 }}>
+                <div className="glass-panel map-wrap" style={{ position: 'relative', overflow: 'hidden', padding: 0 }}>
                     {/* Replaced API Map with Web View (Iframe) as requested */}
                     <iframe
                         width="100%"
@@ -176,7 +170,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Right Column: Actions & Tools */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
 
                 <div className="glass-panel" style={{ padding: '20px' }}>
                     <h3 style={{ marginBottom: '15px' }}>Quick Actions</h3>
@@ -188,7 +182,7 @@ export default function DashboardPage() {
                     <VideoUpload />
                 </div>
 
-                <div style={{ padding: '0 10px' }}>
+                <div style={{ padding: '0 6px' }}>
                     <div style={{ fontSize: '0.9rem', color: 'var(--neutral-text-light)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                         Sensory Tools
                     </div>
@@ -196,6 +190,34 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            <style jsx>{`
+                .live-grid {
+                    display: grid;
+                    grid-template-columns: 1.05fr 1.5fr 1fr;
+                    gap: 16px;
+                    min-height: 100%;
+                    padding-bottom: 8px;
+                }
+
+                .map-wrap {
+                    min-height: 420px;
+                }
+
+                @media (max-width: 1280px) {
+                    .live-grid {
+                        grid-template-columns: 1fr 1.35fr;
+                    }
+                }
+
+                @media (max-width: 980px) {
+                    .live-grid {
+                        grid-template-columns: 1fr;
+                    }
+                    .map-wrap {
+                        min-height: 320px;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

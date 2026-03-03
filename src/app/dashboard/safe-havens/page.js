@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Star, Coffee, BookOpen, Trees, Navigation } from 'lucide-react';
+import { MapPin, Star, Coffee, BookOpen, Trees, Navigation, Landmark } from 'lucide-react';
 
 export default function SafeHavensPage() {
     const [havens, setHavens] = useState([]);
@@ -42,11 +42,19 @@ export default function SafeHavensPage() {
             [out:json][timeout:15];
             (
               node["leisure"="park"](around:3000,${lat},${lon});
+              node["leisure"="garden"](around:3000,${lat},${lon});
+              node["leisure"="nature_reserve"](around:3000,${lat},${lon});
               node["amenity"="library"](around:3000,${lat},${lon});
               node["amenity"="cafe"](around:2000,${lat},${lon});
+              node["amenity"="place_of_worship"](around:3000,${lat},${lon});
+              node["building"="temple"](around:3000,${lat},${lon});
               way["leisure"="park"](around:3000,${lat},${lon});
+              way["leisure"="garden"](around:3000,${lat},${lon});
+              way["leisure"="nature_reserve"](around:3000,${lat},${lon});
+              way["amenity"="place_of_worship"](around:3000,${lat},${lon});
+              way["building"="temple"](around:3000,${lat},${lon});
             );
-            out center 20;
+            out center 40;
         `;
 
         let lastErr = null;
@@ -68,6 +76,14 @@ export default function SafeHavensPage() {
                 if (data.elements) {
                     const processed = data.elements
                         .filter(e => e.tags && (e.lat || (e.center && e.center.lat)))
+                        .filter(e => {
+                            const tags = e.tags || {};
+                            const tourismType = (tags.tourism || '').toLowerCase();
+                            const name = (tags.name || '').toLowerCase();
+                            if (['hotel', 'motel', 'hostel', 'guest_house', 'apartment'].includes(tourismType)) return false;
+                            if (name.includes('hotel') || name.includes('lodge')) return false;
+                            return true;
+                        })
                         .map(e => {
                             const eLat = e.lat || e.center.lat;
                             const eLon = e.lon || e.center.lon;
@@ -78,12 +94,20 @@ export default function SafeHavensPage() {
                             let score = 7.5;
                             let features = ["Quiet Area"];
 
-                            if (tags.leisure === 'park') {
-                                type = 'Park'; score = 9.2; features = ["Nature", "Benches", "Shade"];
+                            if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'nature_reserve') {
+                                type = 'Calm Park'; score = 9.3; features = ["Nature", "Benches", "Shade"];
                             } else if (tags.amenity === 'library') {
                                 type = 'Library'; score = 8.8; features = ["Quiet Zones", "Study Space", "AC"];
+                            } else if (tags.amenity === 'place_of_worship' || tags.building === 'temple') {
+                                type = 'Temple'; score = 9.0; features = ["Peaceful", "Low Noise", "Meditation"];
                             } else if (tags.amenity === 'cafe') {
-                                type = 'Cafe'; score = 7.9; features = ["Cozy", "Low Music"];
+                                const quietCafeBoost =
+                                    (tags.smoking === 'no' ? 0.2 : 0) +
+                                    (tags.outdoor_seating === 'yes' ? 0.2 : 0) +
+                                    (tags.drive_through === 'yes' ? -0.3 : 0);
+                                score = Number((7.7 + quietCafeBoost).toFixed(1));
+                                type = 'Calm Cafe';
+                                features = ["Cozy", "Low Music"];
                             }
 
                             return {
@@ -175,9 +199,10 @@ export default function SafeHavensPage() {
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    {haven.type === 'Park' && <Trees size={12} />}
+                                    {haven.type === 'Calm Park' && <Trees size={12} />}
                                     {haven.type === 'Library' && <BookOpen size={12} />}
-                                    {haven.type === 'Cafe' && <Coffee size={12} />}
+                                    {haven.type === 'Calm Cafe' && <Coffee size={12} />}
+                                    {haven.type === 'Temple' && <Landmark size={12} />}
                                     {haven.type}
                                 </span>
                                 <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary-teal-dark)' }}>{haven.distance} away</span>

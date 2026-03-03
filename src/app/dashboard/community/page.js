@@ -64,97 +64,42 @@ export default function CommunityPage() {
     };
 
     return (
-        <div className="container-max" style={{ padding: '40px 20px', minHeight: '100vh' }}>
-            <motion.header
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                style={{ marginBottom: '40px' }}
-            >
-                <h1 className="text-gradient" style={{ fontSize: '2.5rem', fontWeight: 800, marginBottom: '10px' }}>
-                    Community Intelligence
-                </h1>
-                <p style={{ color: 'var(--neutral-text-light)', fontSize: '1.1rem' }}>
-                    Contribute to the real-time sensory map and help your fellow navigators find peace.
-                </p>
-            </motion.header>
+        <div className="container-max" style={{ padding: '40px 20px' }}>
+            <h1 className="text-gradient" style={{ marginBottom: '10px' }}>Share Your Experience</h1>
+            <p style={{ marginBottom: '40px', color: 'var(--neutral-text-light)' }}>
+                Help make the map better for everyone. Your reports help us calculate real-time Calm Scores.
+            </p>
 
-            {/* Stats Row */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: '20px',
-                marginBottom: '40px'
-            }}>
-                {[
-                    { label: 'Active Contributions', value: '1,284', icon: <Activity size={20} />, color: 'var(--primary-teal)' },
-                    { label: 'Safe Havens Verified', value: '42', icon: <ShieldCheck size={20} />, color: '#B8A8D6' },
-                    { label: 'Community Trust Score', value: '98%', icon: <CheckCircle size={20} />, color: 'var(--success-green)' }
-                ].map((stat, i) => (
-                    <motion.div
-                        key={stat.label}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: i * 0.1 }}
-                        className="glass-panel"
-                        style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}
-                    >
-                        <div style={{
-                            padding: '12px',
-                            background: `${stat.color}20`,
-                            borderRadius: '12px',
-                            color: stat.color
-                        }}>
-                            {stat.icon}
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '0.85rem', color: 'var(--neutral-text-light)', fontWeight: 500 }}>{stat.label}</div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stat.value}</div>
-                        </div>
-                    </motion.div>
-                ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '40px', alignItems: 'start' }}>
-
-                {/* Left: Report Form */}
-                <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="card"
-                    style={{ padding: '35px', background: 'var(--neutral-card)', borderRadius: '24px' }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '30px' }}>
-                        <Plus size={24} color="var(--primary-teal)" />
-                        <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>New Sensory Report</h2>
+            <div className="community-grid">
+                {/* Visual Report Form */}
+                <div className="card" style={{ padding: '30px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '25px' }}>
+                        <Plus size={22} color="var(--primary-teal)" />
+                        <h2 style={{ fontSize: '1.4rem' }}>New Sensory Report</h2>
                     </div>
 
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
                         <div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', fontWeight: 600, fontSize: '0.9rem' }}>
-                                <MapPin size={16} color="var(--primary-teal)" />
-                                CURRENT LOCATION
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--neutral-text-light)' }}>
+                                <MapPin size={14} /> CURRENT LOCATION
                             </label>
-                            <div className="glass-panel" style={{
-                                padding: '14px 20px',
+                            <div style={{
+                                padding: '12px 16px',
                                 background: 'var(--neutral-bg)',
+                                borderRadius: '12px',
                                 border: '1px solid var(--neutral-border)',
-                                color: locationText.includes('Detecting') ? 'var(--neutral-text-light)' : 'var(--neutral-text)',
-                                borderRadius: '14px',
-                                fontWeight: 500
+                                fontSize: '0.95rem'
                             }}>
                                 {locationText}
                             </div>
                         </div>
 
                         <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-                                <label style={{ fontWeight: 600, fontSize: '0.9rem' }}>CALM SCORE</label>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                <label style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--neutral-text-light)' }}>CALM SCORE</label>
                                 <span style={{
                                     fontWeight: 700,
                                     color: getScoreLabel(calmScore).color,
-                                    padding: '4px 12px',
-                                    borderRadius: '20px',
-                                    background: `${getScoreLabel(calmScore).color}15`,
                                     fontSize: '0.85rem'
                                 }}>
                                     {getScoreLabel(calmScore).label}
@@ -164,6 +109,7 @@ export default function CommunityPage() {
                                 type="range" min="1" max="10"
                                 value={calmScore} onChange={(e) => setCalmScore(parseInt(e.target.value))}
                                 style={{
+                                    width: '100%',
                                     height: '8px',
                                     borderRadius: '5px',
                                     appearance: 'none',
@@ -171,30 +117,29 @@ export default function CommunityPage() {
                                     cursor: 'pointer'
                                 }}
                             />
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.8rem', color: 'var(--neutral-text-light)' }}>
-                                <span>Distressing (1)</span>
-                                <span>Peaceful (10)</span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.75rem', color: 'var(--neutral-text-light)' }}>
+                                <span>Distressing</span>
+                                <span>Peaceful</span>
                             </div>
                         </div>
 
                         <div>
-                            <label style={{ display: 'block', marginBottom: '15px', fontWeight: 600, fontSize: '0.9rem' }}>TRIGGERS PRESENT</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                            <label style={{ display: 'block', marginBottom: '12px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--neutral-text-light)' }}>TRIGGERS PRESENT</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                 {triggers.map(tag => (
                                     <button
                                         key={tag}
                                         type="button"
                                         onClick={() => toggleTrigger(tag)}
                                         style={{
-                                            padding: '10px 18px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.85rem',
-                                            fontWeight: 500,
+                                            padding: '8px 14px',
+                                            borderRadius: '10px',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
                                             border: '1px solid',
                                             borderColor: selectedTriggers.includes(tag) ? 'var(--primary-teal)' : 'var(--neutral-border)',
                                             background: selectedTriggers.includes(tag) ? 'var(--primary-teal)' : 'transparent',
                                             color: selectedTriggers.includes(tag) ? 'white' : 'var(--neutral-text)',
-                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                                             cursor: 'pointer'
                                         }}
                                     >
@@ -205,13 +150,13 @@ export default function CommunityPage() {
                         </div>
 
                         <div>
-                            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600, fontSize: '0.9rem' }}>ENVIRONMENTAL NOTES</label>
+                            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--neutral-text-light)' }}>ENVIRONMENTAL NOTES</label>
                             <textarea
                                 rows="3"
                                 placeholder="Describe the atmosphere..."
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
-                                style={{ borderRadius: '16px', background: 'var(--neutral-bg)', border: '2px solid var(--neutral-border)' }}
+                                style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--neutral-border)', background: 'var(--neutral-bg)' }}
                             />
                         </div>
 
@@ -219,37 +164,16 @@ export default function CommunityPage() {
                             type="submit"
                             className="btn-primary"
                             disabled={submitted}
-                            style={{
-                                width: '100%',
-                                padding: '16px',
-                                borderRadius: '16px',
-                                fontSize: '1rem',
-                                background: submitted ? 'var(--success-green)' : 'linear-gradient(135deg, var(--primary-teal), var(--primary-teal-dark))',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '10px'
-                            }}
+                            style={{ width: '100%', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
                         >
-                            {submitted ? (
-                                <><CheckCircle size={20} /> Reported Successfully!</>
-                            ) : (
-                                <><MessageSquare size={20} /> Publish Report</>
-                            )}
+                            {submitted ? <><CheckCircle size={18} /> Published!</> : <><MessageSquare size={18} /> Publish Report</>}
                         </button>
                     </form>
-                </motion.div>
+                </div>
 
-                {/* Right: AI Analysis & Activity */}
+                {/* Right Column: AI Analysis */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-
-                    {/* AI Video Section */}
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="glass-panel"
-                        style={{ padding: '30px', background: 'var(--dark-bg)', color: 'white' }}
-                    >
+                    <div className="glass-panel" style={{ padding: '30px', background: 'var(--dark-bg)', color: 'white', borderRadius: '24px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
                             <div style={{ padding: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}>
                                 <Video color="var(--primary-teal)" size={24} />
@@ -264,72 +188,33 @@ export default function CommunityPage() {
                             background: 'rgba(255,255,255,0.03)',
                             border: '1px dashed rgba(255,255,255,0.1)',
                             borderRadius: '16px',
-                            overflow: 'hidden'
+                            overflow: 'hidden',
+                            marginBottom: '20px'
                         }}>
                             <VideoUpload />
                         </div>
 
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '20px', padding: '15px', background: 'rgba(78, 205, 196, 0.1)', borderRadius: '12px', border: '1px solid rgba(78, 205, 196, 0.2)' }}>
-                            <Info size={16} color="var(--primary-teal)" style={{ flexShrink: 0 }} />
-                            <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.4 }}>
-                                Your clip is analyzed for crowd density and decibel peaks. No faces or private data are ever stored.
+                        <div style={{ display: 'flex', gap: '10px', padding: '18px', background: 'rgba(78, 205, 196, 0.1)', borderRadius: '16px' }}>
+                            <Info size={16} color="var(--primary-teal)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>
+                                Your clip is analyzed for crowd density, movement patterns, and decibel peaks. No faces or private data are ever recorded or stored.
                             </p>
                         </div>
-                    </motion.div>
-
-                    {/* Activity Feed Placeholder */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="card"
-                        style={{ border: 'none', background: 'transparent', padding: '0' }}
-                    >
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <Activity size={18} color="var(--primary-teal)" />
-                            RECENT ACTIVITY
-                        </h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            {[
-                                { user: 'Sarah M.', location: 'Brookfield Library', action: 'Verified Safe Haven', time: '2m ago' },
-                                { user: 'Alex P.', location: 'Central Station', action: 'Reported High Crowds', time: '15m ago' },
-                                { user: 'Jamie L.', location: 'Botanical Gardens', action: 'Updated Calm Level', time: '1h ago' },
-                            ].map((item, i) => (
-                                <div key={i} style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    paddingBottom: '15px',
-                                    borderBottom: '1px solid var(--neutral-border)'
-                                }}>
-                                    <div>
-                                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.user}</div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--neutral-text-light)' }}>
-                                            {item.action} @ {item.location}
-                                        </div>
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--neutral-text-light)' }}>{item.time}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </motion.div>
+                    </div>
                 </div>
             </div>
 
             <style jsx>{`
-                input[type='range']::-webkit-slider-thumb {
-                    appearance: none;
-                    width: 24px;
-                    height: 24px;
-                    background: white;
-                    border: 4px solid var(--primary-teal);
-                    border-radius: 50%;
-                    cursor: pointer;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-                    transition: transform 0.1s ease;
+                .community-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 30px;
                 }
-                input[type='range']::-webkit-slider-thumb:hover {
-                    transform: scale(1.1);
+
+                @media (max-width: 980px) {
+                    .community-grid {
+                        grid-template-columns: 1fr;
+                    }
                 }
             `}</style>
         </div>
