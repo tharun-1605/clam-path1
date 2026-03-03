@@ -53,6 +53,11 @@ export function updateProfile(profile) {
   saveLocal();
 }
 
+export function setCalmScore(score) {
+  state.calmScore = Math.max(1, Math.min(100, Number(score) || 50));
+  saveLocal();
+}
+
 export async function syncHint() {
   return isFirebaseEnabled() ? "Firebase sync active" : "Local mode active";
 }
