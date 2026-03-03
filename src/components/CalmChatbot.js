@@ -2,23 +2,28 @@
 
 import { useState } from 'react';
 
+const PRESET_ACTIONS = [
+    'I feel anxious right now. Give me a fast calming plan.',
+    'Suggest calm audio for panic and sensory overload.',
+    'Give me a 2-minute breathing exercise now.',
+    'I am overwhelmed in a crowded place. What should I do?',
+    'Suggest bedtime calm audio and relaxation steps.'
+];
+
 export default function CalmChatbot({ location = 'Unknown', calmScore = 5 }) {
     const [messages, setMessages] = useState([
         {
             role: 'assistant',
-            text: 'Hi, I can suggest calming audio and quick grounding steps. Tell me how you feel right now.'
+            text: 'Choose an option below. I will suggest calming audio and quick support steps.'
         }
     ]);
-    const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [followUps, setFollowUps] = useState([]);
 
-    const sendMessage = async (e) => {
-        e.preventDefault();
-        const text = input.trim();
+    const sendMessage = async (text) => {
         if (!text || loading) return;
 
         setMessages((prev) => [...prev, { role: 'user', text }]);
-        setInput('');
         setLoading(true);
 
         try {
@@ -40,12 +45,16 @@ export default function CalmChatbot({ location = 'Unknown', calmScore = 5 }) {
             if (data.reply) lines.push(data.reply);
             if (Array.isArray(data.audioSuggestions) && data.audioSuggestions.length) {
                 lines.push(`Calm audio ideas: ${data.audioSuggestions.join(' | ')}`);
+                setFollowUps(data.audioSuggestions.slice(0, 3).map((s) => `Give me details for: ${s}`));
+            } else {
+                setFollowUps([]);
             }
             if (data.exercise) lines.push(`Quick exercise: ${data.exercise}`);
 
             setMessages((prev) => [...prev, { role: 'assistant', text: lines.join('\n') }]);
         } catch (err) {
             setMessages((prev) => [...prev, { role: 'assistant', text: `Sorry, chat failed: ${err.message}` }]);
+            setFollowUps([]);
         } finally {
             setLoading(false);
         }
@@ -75,17 +84,43 @@ export default function CalmChatbot({ location = 'Unknown', calmScore = 5 }) {
                 ))}
             </div>
 
-            <form onSubmit={sendMessage} style={{ display: 'flex', gap: '8px' }}>
-                <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask for calm audio or support..."
-                />
-                <button type="submit" className="btn-primary" disabled={loading}>
-                    {loading ? '...' : 'Send'}
-                </button>
-            </form>
+            <div style={{ display: 'grid', gap: '8px' }}>
+                <div style={{ fontSize: '.8rem', color: 'var(--neutral-text-light)' }}>Quick options</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                    {PRESET_ACTIONS.map((action) => (
+                        <button
+                            key={action}
+                            type="button"
+                            className="btn-secondary"
+                            style={{ justifyContent: 'flex-start', textAlign: 'left', fontSize: '.86rem' }}
+                            disabled={loading}
+                            onClick={() => sendMessage(action)}
+                        >
+                            {action}
+                        </button>
+                    ))}
+                </div>
+
+                {followUps.length > 0 && (
+                    <>
+                        <div style={{ fontSize: '.8rem', color: 'var(--neutral-text-light)', marginTop: '6px' }}>Follow-up</div>
+                        <div style={{ display: 'grid', gap: '6px' }}>
+                            {followUps.map((action) => (
+                                <button
+                                    key={action}
+                                    type="button"
+                                    className="btn-primary"
+                                    style={{ justifyContent: 'flex-start', textAlign: 'left', fontSize: '.84rem' }}
+                                    disabled={loading}
+                                    onClick={() => sendMessage(action)}
+                                >
+                                    {action}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
     );
 }

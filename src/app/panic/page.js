@@ -55,10 +55,19 @@ export default function PanicModePage() {
             [out:json][timeout:10];
             (
               node["leisure"="park"](around:2000,${lat},${lon});
+              node["leisure"="garden"](around:2200,${lat},${lon});
+              node["leisure"="nature_reserve"](around:3000,${lat},${lon});
               node["amenity"="library"](around:2000,${lat},${lon});
               node["amenity"="cafe"](around:1000,${lat},${lon});
+              node["amenity"="place_of_worship"](around:2500,${lat},${lon});
+              node["building"="temple"](around:2500,${lat},${lon});
+              way["leisure"="park"](around:2000,${lat},${lon});
+              way["leisure"="garden"](around:2200,${lat},${lon});
+              way["leisure"="nature_reserve"](around:3000,${lat},${lon});
+              way["amenity"="place_of_worship"](around:2500,${lat},${lon});
+              way["building"="temple"](around:2500,${lat},${lon});
             );
-            out body;
+            out center 60;
         `;
 
         let success = false;
@@ -85,26 +94,45 @@ export default function PanicModePage() {
                     let closest = null;
 
                     data.elements.forEach(place => {
-                        if (!place || place.lat == null || place.lon == null || !place.tags) return;
-                        const d = getDistanceFromLatLonInKm(lat, lon, place.lat, place.lon);
+                        const tags = place?.tags || {};
+                        if (!tags) return;
+
+                        const placeLat = place.lat ?? place.center?.lat;
+                        const placeLon = place.lon ?? place.center?.lon;
+                        if (placeLat == null || placeLon == null) return;
+
+                        // Keep panic suggestions focused on calm locations, avoid hotel/lodge noise.
+                        const tourismType = (tags.tourism || '').toLowerCase();
+                        const nameLower = (tags.name || '').toLowerCase();
+                        if (['hotel', 'motel', 'hostel', 'guest_house', 'apartment'].includes(tourismType)) return;
+                        if (nameLower.includes('hotel') || nameLower.includes('lodge')) return;
+
+                        const d = getDistanceFromLatLonInKm(lat, lon, placeLat, placeLon);
                         if (d < minDist) {
                             minDist = d;
-                            const tags = place.tags || {};
+                            let placeType = 'Calm Spot';
+                            if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'nature_reserve') placeType = 'Calm Park';
+                            else if (tags.amenity === 'library') placeType = 'Library';
+                            else if (tags.amenity === 'cafe') placeType = 'Calm Cafe';
+                            else if (tags.amenity === 'place_of_worship' || tags.building === 'temple') placeType = 'Temple';
+
                             closest = {
                                 name: tags.name || "Quiet Spot",
-                                type: tags.leisure === 'park' ? 'Park' : (tags.amenity === 'library' ? 'Library' : 'Cafe'),
+                                type: placeType,
                                 distance: `${(minDist * 0.621371).toFixed(1)} mi`,
                                 walkTime: `${Math.ceil(minDist * 15)} min walk`, // rough est
-                                lat: place.lat,
-                                lon: place.lon
+                                lat: placeLat,
+                                lon: placeLon
                             };
                         }
                     });
 
-                    setNearestHaven(closest);
-                    setStep('found');
-                    success = true;
-                    break;
+                    if (closest) {
+                        setNearestHaven(closest);
+                        setStep('found');
+                        success = true;
+                        break;
+                    }
                 }
             } catch (err) {
                 console.warn(`Failed fetch from ${server}`, err);
@@ -112,7 +140,16 @@ export default function PanicModePage() {
         }
 
         if (!success) {
-            setError("No quiet places found nearby.");
+            // Emergency fallback so user always gets a direction target.
+            setNearestHaven({
+                name: 'Nearby Quiet Place Search',
+                type: 'Fallback',
+                distance: 'Near you',
+                walkTime: 'Open map',
+                lat: lat,
+                lon: lon
+            });
+            setStep('found');
         }
         setLoading(false);
     };
