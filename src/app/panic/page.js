@@ -93,6 +93,14 @@ export default function PanicModePage() {
                             closest = {
                                 name: tags.name || "Quiet Spot",
                                 type: tags.leisure === 'park' ? 'Park' : (tags.amenity === 'library' ? 'Library' : 'Cafe'),
+                                distance: `${(minDist * 0.621371).toFixed(1)} mi`,
+                                walkTime: `${Math.ceil(minDist * 15)} min walk`, // rough est
+                                lat: place.lat,
+                                lon: place.lon
+                            };
+                        }
+                    });
+
                     setNearestHaven(closest);
                     setStep('found');
                     success = true;
