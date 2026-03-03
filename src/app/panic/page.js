@@ -4,12 +4,22 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { MapPin, ArrowRight } from 'lucide-react';
+import { useRef } from 'react';
 
 export default function PanicModePage() {
     const [step, setStep] = useState('breathing'); // breathing, locating, found
     const [nearestHaven, setNearestHaven] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [smartMode, setSmartMode] = useState(true); // Smart Emergency Mode on by default
+    const [alertSent, setAlertSent] = useState(false);
+    const audioCtxRef = useRef(null);
+    const gainNodeRef = useRef(null);
+    const noiseNodeRef = useRef(null);
+    const oscRef = useRef(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [soundType, setSoundType] = useState('ocean');
+    const [soundVolume, setSoundVolume] = useState(0.45);
 
     // Initial breathing phase
     useEffect(() => {
@@ -27,6 +37,8 @@ export default function PanicModePage() {
                     (position) => {
                         const { latitude, longitude } = position.coords;
                         findNearestHaven(latitude, longitude);
+                        // speak short reassurance immediately
+                        if (smartMode) speakSequence();
                     },
                     (err) => {
                         console.error("Geo Error:", err);
@@ -152,7 +164,168 @@ export default function PanicModePage() {
             setStep('found');
         }
         setLoading(false);
+        // After we have a nearest haven, auto-send alert and open guidance if smart mode
+        if (smartMode) {
+            // determine the coordinates to use (closest found or fallback)
+            const targetLat = (nearestHaven && nearestHaven.lat) ? nearestHaven.lat : lat;
+            const targetLon = (nearestHaven && nearestHaven.lon) ? nearestHaven.lon : lon;
+
+            // small timeout to let UI settle
+            setTimeout(() => {
+                if (!alertSent) sendAlert(lat, lon);
+                // open maps directions automatically after a short pause to avoid jarring navigation
+                window.open(`https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLon}`,'_blank');
+            }, 1200);
+        }
     };
+
+    // Send alert message to caregivers via optional backend and device share fallback
+    async function sendAlert(lat, lon) {
+        try {
+            const message = `Emergency: I need help. My live location: https://maps.google.com/?q=${lat},${lon}`;
+
+            // Try server-side endpoint first (non-blocking)
+            try {
+                await fetch('/api/alert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, lat, lon, timestamp: Date.now() }) });
+            } catch (e) {
+                // ignore server errors
+            }
+
+            // Try Web Share API (mobile) for quick sending
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title: 'NEURO-NAV Emergency', text: message, url: `https://maps.google.com/?q=${lat},${lon}` });
+                    setAlertSent(true);
+                    return;
+                } catch (err) {
+                    // user cancelled or share failed
+                }
+            }
+
+            // Fallback: open WhatsApp Web with prefilled message (user can choose recipient)
+            const wa = `https://wa.me/?text=${encodeURIComponent(message)}`;
+            window.open(wa, '_blank');
+            setAlertSent(true);
+        } catch (err) {
+            console.error('Alert send failed', err);
+        }
+    }
+
+    // Voice-guided calming instructions using Web Speech API
+    function speakSequence() {
+        if (!('speechSynthesis' in window)) return;
+        const s = window.speechSynthesis;
+        s.cancel();
+
+        const phrases = [
+            'You are safe. Focus on slow, deep breaths.',
+            'Breathe in for four seconds. Hold for two. Breathe out for six.',
+            'Repeat this breathing pattern. Notice your feet on the ground. You are okay.'
+        ];
+
+        phrases.forEach((text, i) => {
+            const ut = new SpeechSynthesisUtterance(text);
+            ut.lang = 'en-US';
+            ut.rate = 0.95;
+            ut.pitch = 0.9;
+            ut.volume = 1.0;
+            ut.onend = () => {
+                // last line no-op
+            };
+            // stagger utterances
+            setTimeout(() => {
+                try { s.speak(ut); } catch (e) { /* ignore */ }
+            }, i * 4200);
+        });
+    }
+
+    // Soothing sounds via Web Audio (simple generators, no external files)
+    function ensureAudioCtx() {
+        if (!audioCtxRef.current) {
+            audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        return audioCtxRef.current;
+    }
+
+    function startSound(type) {
+        try {
+            const ctx = ensureAudioCtx();
+            stopSound();
+            gainNodeRef.current = ctx.createGain();
+            gainNodeRef.current.gain.value = soundVolume;
+            gainNodeRef.current.connect(ctx.destination);
+
+            if (type === 'tone') {
+                oscRef.current = ctx.createOscillator();
+                oscRef.current.type = 'sine';
+                oscRef.current.frequency.value = 220; // A3 - gentle
+                const oscGain = ctx.createGain();
+                oscGain.gain.value = 0.25;
+                oscRef.current.connect(oscGain);
+                oscGain.connect(gainNodeRef.current);
+                oscRef.current.start();
+            } else {
+                // white noise buffer
+                const bufferSize = 2 * ctx.sampleRate;
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = ctx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = type === 'ocean' ? 900 : 5000; // ocean = darker, rain = brighter
+                noise.connect(filter);
+                filter.connect(gainNodeRef.current);
+                noise.start();
+                noiseNodeRef.current = noise;
+            }
+
+            setIsPlaying(true);
+            setSoundType(type);
+        } catch (e) {
+            console.warn('Audio start failed', e);
+        }
+    }
+
+    function stopSound() {
+        try {
+            if (oscRef.current) {
+                try { oscRef.current.stop(); } catch {}
+                oscRef.current.disconnect();
+                oscRef.current = null;
+            }
+            if (noiseNodeRef.current) {
+                try { noiseNodeRef.current.stop(); } catch {}
+                noiseNodeRef.current.disconnect();
+                noiseNodeRef.current = null;
+            }
+            if (gainNodeRef.current) {
+                try { gainNodeRef.current.disconnect(); } catch {}
+                gainNodeRef.current = null;
+            }
+        } catch (e) {
+            // ignore
+        }
+        setIsPlaying(false);
+    }
+
+    // adjust volume live
+    function updateVolume(v) {
+        setSoundVolume(v);
+        try {
+            if (gainNodeRef.current) gainNodeRef.current.gain.value = v;
+        } catch {}
+    }
+
+    // cleanup on unmount
+    useEffect(() => {
+        return () => {
+            stopSound();
+            try { if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; } } catch {}
+        };
+    }, []);
 
     // Helper: Haversine
     function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -186,58 +359,96 @@ export default function PanicModePage() {
 
             {/* Finding / Result View */}
             {step !== 'breathing' && (
-                <div style={{ marginTop: '0px', width: '100%', maxWidth: '400px' }}>
-                    <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: '#00695C' }}>
-                        {loading && !nearestHaven ? "Finding Safe Space..." : "Help is here."}
-                    </h2>
-                    <p style={{ marginBottom: '30px', fontSize: '1.1rem', color: '#004D40' }}>
-                        {loading && !nearestHaven ? "Scanning nearby for a quiet place..." : "Focus on your breathing. You are safe."}
-                    </p>
+                <div style={{ marginTop: '0px', width: '100%', maxWidth: '420px' }}>
+                    {/* Ultra-minimal emergency UI when smartMode is active */}
+                    {smartMode ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', alignItems: 'center' }}>
+                            <div style={{ fontSize: '0.9rem', color: '#004D40' }}>{loading && !nearestHaven ? 'Finding Safe Space...' : 'Emergency Mode Active'}</div>
+                            <div style={{ width: '100%', background: 'white', borderRadius: '16px', padding: '24px', boxShadow: 'none' }}>
+                                {loading ? (
+                                    <div style={{ textAlign: 'center', padding: '24px' }} className="spinner"></div>
+                                ) : error ? (
+                                    <div style={{ color: 'var(--accent-coral)' }}>{error}</div>
+                                ) : nearestHaven ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+                                        <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#00251A' }}>{nearestHaven.name}</h1>
+                                        <div style={{ color: '#004D40', fontSize: '1rem' }}>{nearestHaven.distance} • {nearestHaven.walkTime}</div>
+                                        <div style={{ height: '12px' }} />
+                                        <button
+                                            onClick={() => {
+                                                // immediate navigation & ensure voice guidance
+                                                window.open(`https://www.google.com/maps/dir/?api=1&destination=${nearestHaven.lat},${nearestHaven.lon}`,'_blank');
+                                                speakSequence();
+                                            }}
+                                            style={{ width: '100%', padding: '14px', borderRadius: '10px', border: 'none', background: '#00796B', color: 'white', fontWeight: 700 }}
+                                        >
+                                            Go (Maps)
+                                        </button>
 
-                    <div className="card" style={{ padding: '30px', background: 'white', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}>
-                        {loading ? (
-                            <div className="spinner" style={{ margin: '40px auto' }}></div> // Simple loader placeholder
-                        ) : error ? (
-                            <div style={{ color: 'var(--accent-coral)' }}>{error}</div>
-                        ) : nearestHaven ? (
-                            <>
-                                <div style={{ marginBottom: '20px' }}>
-                                    <h3 style={{ fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1px', color: '#00796B', marginBottom: '10px' }}>Nearest Safe Haven Found</h3>
-                                    <div style={{ background: '#E0F2F1', color: '#00695C', display: 'inline-block', padding: '5px 10px', borderRadius: '5px', fontSize: '0.8rem', fontWeight: 600 }}>Recommended</div>
-                                </div>
+                                        {/* Soothing sounds controls below maps button */}
+                                        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <strong>Soothing Sounds</strong>
+                                                <div style={{ fontSize: '0.85rem', color: '#004D40' }}>{isPlaying ? 'Playing' : 'Stopped'}</div>
+                                            </div>
 
-                                <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#004D40', marginBottom: '10px' }}>{nearestHaven.name}</h2>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button onClick={() => { if (isPlaying && soundType === 'ocean') stopSound(); else startSound('ocean'); }} style={{ flex: 1, padding: '8px', borderRadius: '8px' }}>{isPlaying && soundType === 'ocean' ? 'Stop Ocean' : 'Play Ocean'}</button>
+                                                <button onClick={() => { if (isPlaying && soundType === 'rain') stopSound(); else startSound('rain'); }} style={{ flex: 1, padding: '8px', borderRadius: '8px' }}>{isPlaying && soundType === 'rain' ? 'Stop Rain' : 'Play Rain'}</button>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button onClick={() => { if (isPlaying && soundType === 'tone') stopSound(); else startSound('tone'); }} style={{ flex: 1, padding: '8px', borderRadius: '8px' }}>{isPlaying && soundType === 'tone' ? 'Stop Tone' : 'Play Tone'}</button>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                                    <input type="range" min="0" max="1" step="0.01" value={soundVolume} onChange={(e) => updateVolume(Number(e.target.value))} style={{ flex: 1 }} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
 
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#00796B', fontSize: '1.1rem', marginBottom: '30px' }}>
-                                    <MapPin size={20} />
-                                    <span>{nearestHaven.distance} away ({nearestHaven.walkTime})</span>
-                                </div>
-
-                                <a
-                                    href={`https://www.google.com/maps/dir/?api=1&destination=${nearestHaven.lat},${nearestHaven.lon}`}
-                                    target="_blank"
-                                    style={{ textDecoration: 'none' }}
+                            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                <button
+                                    onClick={() => {
+                                        // stop emergency: cancel voice, disable smart, go back
+                                        try { window.speechSynthesis.cancel(); } catch (e) {}
+                                        setSmartMode(false);
+                                        setStep('breathing');
+                                    }}
+                                    style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', background: '#E57373', color: 'white', fontWeight: 700 }}
                                 >
-                                    <button style={{
-                                        width: '100%', padding: '18px', borderRadius: '12px', border: 'none',
-                                        background: 'linear-gradient(135deg, #4ECDC4 0%, #556270 100%)',
-                                        color: 'white', fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                                        boxShadow: '0 4px 15px rgba(78, 205, 196, 0.4)'
-                                    }}>
-                                        Start Guidance Now
-                                        <ArrowRight size={20} />
-                                    </button>
-                                </a>
-                            </>
-                        ) : null}
-                    </div>
+                                    Stop Emergency
+                                </button>
 
-                    <Link href="/dashboard">
-                        <button style={{ marginTop: '20px', background: 'transparent', border: 'none', color: '#00796B', fontSize: '1rem', cursor: 'pointer', textDecoration: 'underline' }}>
-                            Return to Dashboard
-                        </button>
-                    </Link>
+                                <button
+                                    onClick={() => {
+                                        // quick manual alert resend
+                                        if (nearestHaven) sendAlert(nearestHaven.lat, nearestHaven.lon);
+                                    }}
+                                    style={{ flex: 1, padding: '12px', borderRadius: '10px', border: 'none', background: '#556270', color: 'white', fontWeight: 700 }}
+                                >
+                                    Resend Alert
+                                </button>
+                            </div>
+
+                            <div style={{ fontSize: '0.85rem', color: '#004D40' }}>{alertSent ? 'Alert sent' : 'Alert not sent'}</div>
+                        </div>
+                    ) : (
+                        // non-smart minimal view
+                        <div>
+                            <h2 style={{ fontSize: '1.4rem', marginBottom: '8px' }}>{loading ? 'Finding Safe Space...' : 'Help is here.'}</h2>
+                            <p style={{ marginBottom: '16px' }}>{loading ? 'Scanning nearby for quiet place...' : 'Focus on breathing.'}</p>
+                            <div className="card" style={{ padding: '20px' }}>
+                                {loading ? <div className="spinner" /> : error ? <div style={{ color: 'var(--accent-coral)' }}>{error}</div> : nearestHaven && (
+                                    <>
+                                        <h3 style={{ marginTop: 0 }}>{nearestHaven.name}</h3>
+                                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${nearestHaven.lat},${nearestHaven.lon}`} target="_blank">Open Maps</a>
+                                    </>
+                                )}
+                            </div>
+                            <Link href="/dashboard"><button style={{ marginTop: '12px' }}>Return</button></Link>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

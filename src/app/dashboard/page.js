@@ -165,9 +165,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Center Column: Map & Score */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden' }}>
-                <CalmScoreHeader score={calmScore} location={locationLabel} />
-                <div className="glass-panel map-wrap" style={{ position: 'relative', overflow: 'hidden', padding: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden' }}>
+                    <CalmScoreHeader score={calmScore} location={locationLabel} />
+                    <div className="glass-panel map-wrap" style={{ position: 'relative', overflow: 'hidden', padding: 0 }}>
                     {/* Replaced API Map with Web View (Iframe) as requested */}
                     <iframe
                         width="100%"
@@ -182,6 +182,10 @@ export default function DashboardPage() {
                     <div style={{ position: 'absolute', bottom: '20px', right: '20px', zIndex: 10 }}>
                         <PanicButton />
                     </div>
+                </div>
+                {/* Soothing sounds player moved below the map */}
+                <div style={{ marginTop: '12px' }}>
+                    <MusicPlayer />
                 </div>
             </div>
 
@@ -232,7 +236,10 @@ export default function DashboardPage() {
                     <div style={{ fontSize: '0.9rem', color: 'var(--neutral-text-light)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                         Sensory Tools
                     </div>
-                    <MusicPlayer />
+                    {/* Music player moved below map for easier access during navigation */}
+                    <div style={{ fontSize: '.9rem', color: 'var(--neutral-text-light)' }}>
+                        Quick calming tools are available under the map for immediate access.
+                    </div>
                 </div>
 
             </div>
