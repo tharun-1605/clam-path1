@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import MapComponent from '../../components/MapComponent';
 import PanicButton from '../../components/PanicButton'; // Keep floating panic button as backup or specifically for map
 import VideoUpload from '../../components/VideoUpload';
 import MusicPlayer from '../../components/MusicPlayer';
@@ -9,12 +8,65 @@ import CalmScoreHeader from '../../components/CalmScoreHeader';
 import SafeHavensPreview from '../../components/SafeHavensPreview';
 import QuickActionGrid from '../../components/QuickActionGrid';
 
+const DEFAULT_COORDS = { lat: 40.785091, lng: -73.968285 };
+const DEFAULT_LOCATION = "Current Area";
+
 export default function DashboardPage() {
     const [mounted, setMounted] = useState(false);
+    const [mapCoords, setMapCoords] = useState(DEFAULT_COORDS);
+    const [locationLabel, setLocationLabel] = useState("Detecting location...");
 
     useEffect(() => {
         setMounted(true);
+
+        if (!navigator.geolocation) {
+            setLocationLabel(DEFAULT_LOCATION);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                setMapCoords({ lat: latitude, lng: longitude });
+                const resolvedName = await resolveLocationName(latitude, longitude);
+                setLocationLabel(resolvedName);
+            },
+            () => {
+                setLocationLabel(DEFAULT_LOCATION);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        );
     }, []);
+
+    const resolveLocationName = async (lat, lng) => {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=14&addressdetails=1`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('reverse geocode failed');
+
+            const data = await response.json();
+            const address = data?.address || {};
+            const label =
+                address.suburb ||
+                address.neighbourhood ||
+                address.city_district ||
+                address.city ||
+                address.town ||
+                address.village ||
+                address.county;
+
+            if (label) return label;
+
+            if (data?.display_name) {
+                const firstPart = data.display_name.split(',')[0]?.trim();
+                if (firstPart) return firstPart;
+            }
+        } catch {
+            // fall through to coordinate fallback
+        }
+
+        return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    };
 
     if (!mounted) {
         return (
@@ -40,7 +92,7 @@ export default function DashboardPage() {
 
             {/* Center Column: Map & Score */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflow: 'hidden' }}>
-                <CalmScoreHeader score={7.2} location="Downtown District" />
+                <CalmScoreHeader score={7.2} location={locationLabel} />
                 <div className="glass-panel" style={{ flex: 1, position: 'relative', overflow: 'hidden', padding: 0 }}>
                     {/* Replaced API Map with Web View (Iframe) as requested */}
                     <iframe
@@ -49,7 +101,7 @@ export default function DashboardPage() {
                         style={{ border: 0 }}
                         loading="lazy"
                         allowFullScreen
-                        src={`https://maps.google.com/maps?q=loc:40.785091,-73.968285&z=14&output=embed`}
+                        src={`https://maps.google.com/maps?q=loc:${mapCoords.lat},${mapCoords.lng}&z=14&output=embed`}
                         id="dashboard-map-frame"
                     ></iframe>
                     {/* Floating Panic Button on Map */}

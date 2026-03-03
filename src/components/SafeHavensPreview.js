@@ -17,12 +17,6 @@ export default function SafeHavensPreview() {
                     const { latitude, longitude } = position.coords;
                     setUserLoc({ lat: latitude, lng: longitude });
 
-                    // Update Dashboard Map Iframe if it exists
-                    const mapFrame = document.getElementById('dashboard-map-frame');
-                    if (mapFrame) {
-                        mapFrame.src = `https://maps.google.com/maps?q=loc:${latitude},${longitude}&z=14&output=embed`;
-                    }
-
                     fetchNearbyPlaces(latitude, longitude);
                 },
                 (err) => {
