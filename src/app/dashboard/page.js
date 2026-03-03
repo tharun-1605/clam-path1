@@ -7,6 +7,7 @@ import MusicPlayer from '../../components/MusicPlayer';
 import CalmScoreHeader from '../../components/CalmScoreHeader';
 import SafeHavensPreview from '../../components/SafeHavensPreview';
 import QuickActionGrid from '../../components/QuickActionGrid';
+import { getCommunityCalmStatsNear } from '../../lib/communityReports';
 
 const DEFAULT_COORDS = { lat: 40.785091, lng: -73.968285 };
 const DEFAULT_LOCATION = "Current Area";
@@ -23,6 +24,7 @@ export default function DashboardPage() {
     const [mapCoords, setMapCoords] = useState(DEFAULT_COORDS);
     const [locationLabel, setLocationLabel] = useState("Detecting location...");
     const [calmScore, setCalmScore] = useState(DEFAULT_SCORE);
+    const [communityStats, setCommunityStats] = useState({ count: 0, avgCalm: null, recent: [] });
 
     useEffect(() => {
         setMounted(true);
@@ -36,12 +38,18 @@ export default function DashboardPage() {
             async (position) => {
                 const { latitude, longitude } = position.coords;
                 setMapCoords({ lat: latitude, lng: longitude });
-                const [resolvedName, score] = await Promise.all([
+                const [resolvedName, baseScore] = await Promise.all([
                     resolveLocationName(latitude, longitude),
                     resolveAreaCalmScore(latitude, longitude)
                 ]);
+                const nearbyCommunity = getCommunityCalmStatsNear(latitude, longitude, 3);
+                setCommunityStats(nearbyCommunity);
+
+                const blendedScore = nearbyCommunity.count > 0
+                    ? Number(((baseScore * 0.75) + (nearbyCommunity.avgCalm * 0.25)).toFixed(1))
+                    : baseScore;
                 setLocationLabel(resolvedName);
-                setCalmScore(score);
+                setCalmScore(blendedScore);
             },
             () => {
                 setLocationLabel(DEFAULT_LOCATION);
@@ -180,6 +188,22 @@ export default function DashboardPage() {
                 <div className="glass-panel" style={{ padding: '20px' }}>
                     <h3 style={{ marginBottom: '15px' }}>Analysis</h3>
                     <VideoUpload />
+                    <div style={{ marginTop: '14px', display: 'grid', gap: '8px' }}>
+                        <div style={{ fontSize: '.88rem', color: 'var(--neutral-text-light)' }}>
+                            Community reports near you: <strong style={{ color: 'var(--neutral-text)' }}>{communityStats.count}</strong>
+                            {communityStats.avgCalm != null && (
+                                <span> | Avg calm: <strong style={{ color: 'var(--neutral-text)' }}>{communityStats.avgCalm}</strong></span>
+                            )}
+                        </div>
+                        {communityStats.recent.slice(0, 3).map((item) => (
+                            <div key={item.id} className="card" style={{ padding: '10px' }}>
+                                <div style={{ fontSize: '.86rem', fontWeight: 700 }}>{item.locationLabel}</div>
+                                <div style={{ fontSize: '.8rem', color: 'var(--neutral-text-light)' }}>
+                                    Calm {Number(item.calmScore || 0).toFixed(1)} / 10
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 <div style={{ padding: '0 6px' }}>

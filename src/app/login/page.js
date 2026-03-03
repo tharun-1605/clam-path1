@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 export default function LoginPage() {
-    const { loginWithGoogle, user } = useAuth();
+    const { loginWithGoogle, user, authError } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
@@ -45,6 +45,21 @@ export default function LoginPage() {
                     </svg>
                     Sign in with Google
                 </button>
+
+                {authError && (
+                    <div style={{
+                        marginTop: '12px',
+                        padding: '10px',
+                        borderRadius: '10px',
+                        border: '1px solid rgba(243,95,95,0.35)',
+                        color: '#FCA5A5',
+                        background: 'rgba(127,29,29,0.25)',
+                        fontSize: '0.9rem',
+                        textAlign: 'left'
+                    }}>
+                        {authError}
+                    </div>
+                )}
             </motion.div>
         </div>
     );

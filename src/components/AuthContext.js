@@ -12,6 +12,7 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [authError, setAuthError] = useState('');
     const router = useRouter();
 
     useEffect(() => {
@@ -31,11 +32,20 @@ export const AuthProvider = ({ children }) => {
     const loginWithGoogle = async () => {
         try {
             setLoading(true);
+            setAuthError('');
             await new Promise(resolve => setTimeout(resolve, 1500)); // Fake loading for UX
             await signInWithPopup(auth, googleProvider);
             router.push('/dashboard');
         } catch (error) {
             console.error("Login Failed", error);
+            if (error?.code === 'auth/unauthorized-domain') {
+                const host = typeof window !== 'undefined' ? window.location.hostname : 'current host';
+                setAuthError(`Google login is blocked for this domain (${host}). Add it to Firebase Authentication > Settings > Authorized domains.`);
+            } else if (error?.code === 'auth/popup-closed-by-user') {
+                setAuthError('Login popup was closed before completing sign in.');
+            } else {
+                setAuthError(error?.message || 'Login failed. Please try again.');
+            }
             setLoading(false);
         }
     };
@@ -50,7 +60,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loginWithGoogle, logout, loading }}>
+        <AuthContext.Provider value={{ user, loginWithGoogle, logout, loading, authError }}>
             {!loading && children}
         </AuthContext.Provider>
     );

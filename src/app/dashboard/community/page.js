@@ -4,15 +4,27 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Info, CheckCircle, Activity, ShieldCheck, Video, MessageSquare, Plus } from 'lucide-react';
 import VideoUpload from '../../../components/VideoUpload';
+import { useAuth } from '../../../components/AuthContext';
+import { loadCommunityReports, saveCommunityReport } from '../../../lib/communityReports';
+
+const TRIGGER_OPTIONS = ['Loud Noises', 'Bright Lights', 'Crowds', 'Construction'];
 
 export default function CommunityPage() {
+    const { user } = useAuth();
     const [calmScore, setCalmScore] = useState(5);
     const [notes, setNotes] = useState('');
+    const [triggers, setTriggers] = useState([]);
     const [locationText, setLocationText] = useState('Detecting current location...');
+<<<<<<< HEAD
     const [selectedTriggers, setSelectedTriggers] = useState([]);
     const [submitted, setSubmitted] = useState(false);
 
     const triggers = ['Loud Noises', 'Bright Lights', 'Crowds', 'Construction', 'Unpleasant Smells', 'Fast Movement'];
+=======
+    const [coords, setCoords] = useState({ lat: null, lon: null });
+    const [statusMsg, setStatusMsg] = useState('');
+    const [recentReports, setRecentReports] = useState([]);
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
 
     useEffect(() => {
         if (!navigator.geolocation) {
@@ -23,12 +35,16 @@ export default function CommunityPage() {
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 const { latitude, longitude } = position.coords;
+                setCoords({ lat: latitude, lon: longitude });
                 const label = await reverseGeocode(latitude, longitude);
                 setLocationText(label);
             },
             () => setLocationText('Permission denied'),
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
         );
+
+        const all = loadCommunityReports();
+        setRecentReports(all.slice(0, 6));
     }, []);
 
     const reverseGeocode = async (lat, lng) => {
@@ -40,7 +56,11 @@ export default function CommunityPage() {
             const address = data?.address || {};
             return address.road || address.neighbourhood || address.suburb || address.city || 'Current Location';
         } catch {
+<<<<<<< HEAD
             return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+=======
+            // fallback to coordinates
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
         }
     };
 
@@ -50,8 +70,13 @@ export default function CommunityPage() {
         );
     };
 
+    const toggleTrigger = (tag) => {
+        setTriggers((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]));
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
+<<<<<<< HEAD
         setSubmitted(true);
         setTimeout(() => setSubmitted(false), 3000);
     };
@@ -61,28 +86,64 @@ export default function CommunityPage() {
         if (score <= 3) return { label: 'Overstimulating', color: '#FF6B6B' }; // Accent Coral
         if (score <= 6) return { label: 'Manageable', color: '#F6AD55' };
         return { label: 'Perfectly Calm', color: '#4ECDC4' }; // Primary Teal
+=======
+
+        if (coords.lat == null || coords.lon == null) {
+            setStatusMsg('Location unavailable. Allow location access and try again.');
+            return;
+        }
+
+        const report = {
+            id: Date.now(),
+            createdAt: new Date().toISOString(),
+            userId: user?.uid || null,
+            userEmail: user?.email || null,
+            locationLabel: locationText.replace('Current Location: ', ''),
+            lat: coords.lat,
+            lon: coords.lon,
+            calmScore: Number(calmScore),
+            triggers,
+            notes: notes.trim()
+        };
+
+        saveCommunityReport(report);
+        setRecentReports(loadCommunityReports().slice(0, 6));
+        setNotes('');
+        setTriggers([]);
+        setStatusMsg('Report submitted and added to live map analysis.');
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
     };
 
     return (
         <div className="container-max" style={{ padding: '40px 20px' }}>
             <h1 className="text-gradient" style={{ marginBottom: '10px' }}>Share Your Experience</h1>
-            <p style={{ marginBottom: '40px', color: 'var(--neutral-text-light)' }}>
-                Help make the map better for everyone. Your reports help us calculate real-time Calm Scores.
+            <p style={{ marginBottom: '24px', color: 'var(--neutral-text-light)' }}>
+                Reports from this page are used in Live Map analysis and route calm path estimation.
             </p>
 
             <div className="community-grid">
+<<<<<<< HEAD
                 {/* Visual Report Form */}
                 <div className="card" style={{ padding: '30px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '25px' }}>
                         <Plus size={22} color="var(--primary-teal)" />
                         <h2 style={{ fontSize: '1.4rem' }}>New Sensory Report</h2>
                     </div>
+=======
+                <div className="card">
+                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600 }}>Location</label>
+                            <input type="text" value={locationText} readOnly />
+                        </div>
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
 
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
                         <div>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--neutral-text-light)' }}>
                                 <MapPin size={14} /> CURRENT LOCATION
                             </label>
+<<<<<<< HEAD
                             <div style={{
                                 padding: '12px 16px',
                                 background: 'var(--neutral-bg)',
@@ -91,10 +152,27 @@ export default function CommunityPage() {
                                 fontSize: '0.95rem'
                             }}>
                                 {locationText}
+=======
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                <span>(1)</span>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="10"
+                                    value={calmScore}
+                                    onChange={(e) => setCalmScore(Number(e.target.value))}
+                                    style={{ flex: 1, accentColor: 'var(--primary-teal)' }}
+                                />
+                                <span>(10)</span>
+                            </div>
+                            <div style={{ textAlign: 'center', marginTop: '5px', fontWeight: 700, color: 'var(--primary-teal)' }}>
+                                Score: {calmScore}
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
                             </div>
                         </div>
 
                         <div>
+<<<<<<< HEAD
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                                 <label style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--neutral-text-light)' }}>CALM SCORE</label>
                                 <span style={{
@@ -145,6 +223,31 @@ export default function CommunityPage() {
                                     >
                                         {tag}
                                     </button>
+=======
+                            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600 }}>Triggers Present</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                {TRIGGER_OPTIONS.map((tag) => (
+                                    <label
+                                        key={tag}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '8px 12px',
+                                            background: 'var(--neutral-bg)',
+                                            borderRadius: '20px',
+                                            cursor: 'pointer',
+                                            border: '1px solid var(--neutral-border)'
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={triggers.includes(tag)}
+                                            onChange={() => toggleTrigger(tag)}
+                                        />
+                                        {tag}
+                                    </label>
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
                                 ))}
                             </div>
                         </div>
@@ -168,9 +271,13 @@ export default function CommunityPage() {
                         >
                             {submitted ? <><CheckCircle size={18} /> Published!</> : <><MessageSquare size={18} /> Publish Report</>}
                         </button>
+                        {statusMsg && (
+                            <div style={{ fontSize: '.9rem', color: 'var(--primary-teal-dark)' }}>{statusMsg}</div>
+                        )}
                     </form>
                 </div>
 
+<<<<<<< HEAD
                 {/* Right Column: AI Analysis */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
                     <div className="glass-panel" style={{ padding: '30px', background: 'var(--dark-bg)', color: 'white', borderRadius: '24px' }}>
@@ -200,6 +307,35 @@ export default function CommunityPage() {
                                 Your clip is analyzed for crowd density, movement patterns, and decibel peaks. No faces or private data are ever recorded or stored.
                             </p>
                         </div>
+=======
+                <div style={{ display: 'grid', gap: '16px' }}>
+                    <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div>
+                            <h2 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Upload Scene Video</h2>
+                            <p style={{ fontSize: '0.9rem', color: 'var(--neutral-text-light)' }}>
+                                Video helps improve contextual analysis with your text report.
+                            </p>
+                        </div>
+                        <VideoUpload />
+                    </div>
+
+                    <div className="glass-panel" style={{ padding: '18px' }}>
+                        <h3 style={{ marginBottom: '10px' }}>Recent Community Reports</h3>
+                        {recentReports.length === 0 ? (
+                            <p style={{ color: 'var(--neutral-text-light)' }}>No reports yet.</p>
+                        ) : (
+                            <div style={{ display: 'grid', gap: '8px' }}>
+                                {recentReports.map((item) => (
+                                    <div key={item.id} className="card" style={{ padding: '10px' }}>
+                                        <div style={{ fontSize: '.9rem', fontWeight: 700 }}>{item.locationLabel}</div>
+                                        <div style={{ fontSize: '.82rem', color: 'var(--neutral-text-light)' }}>
+                                            Calm {Number(item.calmScore || 0).toFixed(1)} / 10
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+>>>>>>> 2f06082f1659a2ffbd175479134376931778eb4b
                     </div>
                 </div>
             </div>

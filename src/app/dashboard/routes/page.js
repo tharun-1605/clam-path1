@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../../components/AuthContext';
+import { getCommunityCalmStatsNear } from '../../../lib/communityReports';
 
 const ROUTE_HISTORY_KEY = 'neuro-nav-route-history';
 const OVERPASS_SERVERS = [
@@ -96,7 +97,8 @@ export default function RoutesPage() {
                 duration: stats.duration,
                 distance: stats.distance,
                 noiseLevel: stats.noiseLevel,
-                description: `A sensory-safe route from ${startLabel} to ${destination}. Real-time data fetched via OSRM.`
+                calmScore: stats.calmScore,
+                description: `A sensory-safe route from ${startLabel} to ${destination}. Real-time data fetched via OSRM${stats.communityCount ? ` + ${stats.communityCount} nearby community reports` : ''}.`
             };
 
             setRoute(nextRoute);
@@ -109,7 +111,7 @@ export default function RoutesPage() {
                 destination: destination.trim(),
                 duration: nextRoute.duration,
                 distance: nextRoute.distance,
-                calmScore: 8.5
+                calmScore: nextRoute.calmScore
             });
         } catch (err) {
             console.error('Routing Error:', err);
@@ -117,6 +119,7 @@ export default function RoutesPage() {
                 duration: 'Calculated',
                 distance: 'Unknown',
                 noiseLevel: 'Estimated (50 dB)',
+                calmScore: 6.0,
                 description: `Could not fetch exact stats (${err.message}). Showing map path.`
             };
             setRoute(fallbackRoute);
@@ -129,7 +132,7 @@ export default function RoutesPage() {
                 destination: destination.trim(),
                 duration: fallbackRoute.duration,
                 distance: fallbackRoute.distance,
-                calmScore: 7.5
+                calmScore: fallbackRoute.calmScore
             });
         } finally {
             setLoading(false);
@@ -184,13 +187,15 @@ export default function RoutesPage() {
                 return {
                     distance: `${distKm} km`,
                     duration: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`,
-                    noiseLevel
+                    noiseLevel: noiseLevel.label,
+                    calmScore: noiseLevel.calmScore,
+                    communityCount: noiseLevel.communityCount
                 };
             }
         } catch (e) {
             console.error(e);
         }
-        return { distance: 'Unknown', duration: 'Unknown', noiseLevel: 'Estimated (50 dB)' };
+        return { distance: 'Unknown', duration: 'Unknown', noiseLevel: 'Estimated (50 dB)', calmScore: 6.0, communityCount: 0 };
     }
 
     async function estimateNoiseLevel(routeObj, distKm) {
@@ -252,11 +257,27 @@ export default function RoutesPage() {
             // fallback to base estimate
         }
 
+        if (routeObj?.geometry?.coordinates?.length > 0) {
+            const mid = routeObj.geometry.coordinates[Math.floor(routeObj.geometry.coordinates.length / 2)];
+            const community = getCommunityCalmStatsNear(mid[1], mid[0], 2.5);
+            if (community.count > 0) {
+                // Low community calm raises expected dB, high calm lowers it.
+                db += (5 - community.avgCalm) * 2.1;
+                const boundedWithCommunity = Math.max(35, Math.min(78, db));
+                const roundedWithCommunity = Math.round(boundedWithCommunity);
+                const calmScore = Number(Math.max(1, Math.min(10, (10 - ((roundedWithCommunity - 35) / 4.3)) + ((community.avgCalm - 5) * 0.15))).toFixed(1));
+                if (roundedWithCommunity <= 45) return { label: `Quiet (${roundedWithCommunity} dB)`, calmScore, communityCount: community.count };
+                if (roundedWithCommunity <= 58) return { label: `Moderate (${roundedWithCommunity} dB)`, calmScore, communityCount: community.count };
+                return { label: `Busy (${roundedWithCommunity} dB)`, calmScore, communityCount: community.count };
+            }
+        }
+
         const bounded = Math.max(35, Math.min(78, db));
         const rounded = Math.round(bounded);
-        if (rounded <= 45) return `Quiet (${rounded} dB)`;
-        if (rounded <= 58) return `Moderate (${rounded} dB)`;
-        return `Busy (${rounded} dB)`;
+        const calmScore = Number(Math.max(1, Math.min(10, 10 - ((rounded - 35) / 4.3))).toFixed(1));
+        if (rounded <= 45) return { label: `Quiet (${rounded} dB)`, calmScore, communityCount: 0 };
+        if (rounded <= 58) return { label: `Moderate (${rounded} dB)`, calmScore, communityCount: 0 };
+        return { label: `Busy (${rounded} dB)`, calmScore, communityCount: 0 };
     }
 
     useEffect(() => {
@@ -340,6 +361,10 @@ export default function RoutesPage() {
                             <div>
                                 <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Avg Noise</span>
                                 <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.noiseLevel}</span>
+                            </div>
+                            <div>
+                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Calm Score</span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{Number(route.calmScore || 0).toFixed(1)}</span>
                             </div>
                         </div>
                         <p style={{ color: 'var(--foreground)', fontSize: '.88rem' }}>{route.description}</p>

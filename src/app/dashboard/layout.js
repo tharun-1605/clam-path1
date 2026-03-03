@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 
 export default function DashboardLayout({ children }) {
     const [mobileOpen, setMobileOpen] = useState(false);
+    const pathname = usePathname();
+
+    const hideScrollbar = pathname === '/dashboard' || pathname === '/dashboard/history';
 
     return (
         <div className="dashboard-shell">
@@ -22,7 +26,7 @@ export default function DashboardLayout({ children }) {
                     <h2 className="text-gradient" style={{ fontSize: '1.05rem', fontWeight: 800 }}>Neuro-Nav</h2>
                 </header>
 
-                <main className="dashboard-main glass-panel">
+                <main className={`dashboard-main glass-panel ${hideScrollbar ? 'no-scrollbar' : ''}`}>
                     {children}
                 </main>
             </div>
