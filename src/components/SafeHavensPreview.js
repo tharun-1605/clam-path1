@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { MapPin, Star, Coffee, BookOpen, Trees } from 'lucide-react';
+import { MapPin, Star, Coffee, BookOpen, Trees, Navigation } from 'lucide-react';
 
 export default function SafeHavensPreview() {
     const [havens, setHavens] = useState([]);
@@ -20,7 +20,6 @@ export default function SafeHavensPreview() {
                     fetchNearbyPlaces(latitude, longitude);
                 },
                 (err) => {
-                    // geolocation failures are expected when user denies permission
                     console.warn("Geo Error:", err);
                     setLoading(false);
                 }
@@ -32,7 +31,6 @@ export default function SafeHavensPreview() {
     }, []);
 
     const fetchNearbyPlaces = async (lat, lon) => {
-        // Robust fetcher using multiple mirrors to handle rate limiting/downtime
         const OVERPASS_SERVERS = [
             'https://overpass-api.de/api/interpreter',
             'https://lz4.overpass-api.de/api/interpreter',
@@ -41,22 +39,21 @@ export default function SafeHavensPreview() {
         ];
 
         const query = `
-            [out:json][timeout:10];
+            [out:json][timeout:15];
             (
-              node["leisure"="park"](around:2000,${lat},${lon});
-              node["amenity"="library"](around:2000,${lat},${lon});
-              node["amenity"="cafe"](around:1500,${lat},${lon});
+              node["leisure"="park"](around:3000,${lat},${lon});
+              node["amenity"="library"](around:3000,${lat},${lon});
+              node["amenity"="cafe"](around:2000,${lat},${lon});
+              way["leisure"="park"](around:3000,${lat},${lon});
             );
-            out body 10;
+            out center 20;
         `;
 
         let success = false;
-
         for (const server of OVERPASS_SERVERS) {
             try {
-                console.log(`Trying Overpass server: ${server}`);
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout per server
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
 
                 const response = await fetch(server, {
                     method: 'POST',
@@ -66,42 +63,50 @@ export default function SafeHavensPreview() {
                 clearTimeout(timeoutId);
 
                 if (!response.ok) throw new Error(`Status ${response.status}`);
-
                 const data = await response.json();
 
                 if (data.elements) {
                     const processed = data.elements
-                        .filter(place => place && place.lat != null && place.lon != null && place.tags)
-                        .map(place => {
-                            // Calculate simplified distance
-                            const dist = getDistanceFromLatLonInKm(lat, lon, place.lat, place.lon);
+                        .filter(e => e.tags && (e.lat || (e.center && e.center.lat)))
+                        .map(e => {
+                            const eLat = e.lat || e.center.lat;
+                            const eLon = e.lon || e.center.lon;
+                            const dist = getDistanceFromLatLonInKm(lat, lon, eLat, eLon);
+                            const tags = e.tags || {};
 
-                            // Determine type and score with safe tag access
-                            const tags = place.tags || {};
                             let type = "Place";
-                            let score = 8.0;
-                            if (tags.leisure === 'park') { type = 'Park'; score = 9.5; }
-                            else if (tags.amenity === 'library') { type = 'Library'; score = 9.0; }
-                            else if (tags.amenity === 'cafe') { type = 'Cafe'; score = 7.5; }
+                            let score = 7.5;
+                            let features = ["Quiet Area"];
+
+                            if (tags.leisure === 'park') {
+                                type = 'Park'; score = 9.2; features = ["Nature", "Benches", "Shade"];
+                            } else if (tags.amenity === 'library') {
+                                type = 'Library'; score = 8.8; features = ["Quiet Zones", "Study Space", "AC"];
+                            } else if (tags.amenity === 'cafe') {
+                                type = 'Cafe'; score = 7.9; features = ["Cozy", "Low Music"];
+                            }
 
                             return {
-                                id: place.id,
-                                name: tags.name || `${type} (Unnamed)`,
+                                id: e.id,
+                                name: tags.name || `${type} (Unnamed Spot)`,
                                 type: type,
-                                distance: `${(dist * 0.621371).toFixed(1)} mi`, // convert km to miles
-                                rating: 4.5, // Mock rating as OSM doesn't have ratings
-                                score: score
+                                distance: `${(dist * 0.621371).toFixed(1)} mi`,
+                                rating: (4.0 + Math.random() * 1.0).toFixed(1),
+                                score: score,
+                                features: features,
+                                lat: eLat,
+                                lng: eLon
                             };
-                        });
-                    // Filter duplicates or bad names if needed
-                    const validPlaces = processed.slice(0, 10); // Take top 10
-                    setHavens(validPlaces.length > 0 ? validPlaces : []);
+                        })
+                        .sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+
+                    setHavens(processed.slice(0, 10));
                     success = true;
-                    break; // Stop if successful
+                    setLoading(false);
+                    return;
                 }
             } catch (err) {
                 console.warn(`Failed to fetch from ${server}:`, err);
-                // Continue to next server
             }
         }
 
@@ -111,36 +116,37 @@ export default function SafeHavensPreview() {
         setLoading(false);
     };
 
-    // Helper: Haversine Formula for distance
     function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-        var R = 6371; // Radius of the earth in km
-        var dLat = deg2rad(lat2 - lat1);  // deg2rad below
+        var R = 6371;
+        var dLat = deg2rad(lat2 - lat1);
         var dLon = deg2rad(lon2 - lon1);
         var a =
             Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
         var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        var d = R * c; // Distance in km
-        return d;
+        return R * c;
     }
 
     function deg2rad(deg) {
         return deg * (Math.PI / 180);
     }
 
+    const handleNavigate = (haven) => {
+        let url = `https://www.google.com/maps/dir/?api=1&destination=${haven.lat},${haven.lng}`;
+        if (userLoc) {
+            url += `&origin=${userLoc.lat},${userLoc.lng}`;
+        }
+        window.open(url, '_blank');
+    };
+
     return (
         <div className="glass-panel" style={{ padding: '20px', height: '100%', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3>Nearby Safe Havens</h3>
-                {/* External Link to Google Maps Search as "Filter" option */}
-                <a
-                    href={userLoc ? `https://www.google.com/maps/search/quiet+places+near+me/@${userLoc.lat},${userLoc.lng},14z` : '#'}
-                    target="_blank"
-                    style={{ color: 'var(--primary-teal)', fontSize: '0.9rem', fontWeight: 600, textDecoration: 'none' }}
-                >
-                    View Map
-                </a>
+                <h3 style={{ margin: 0 }}>Nearby Safe Havens</h3>
+                <Link href="/dashboard/safe-havens" style={{ color: 'var(--primary-teal)', fontSize: '0.9rem', fontWeight: 600, textDecoration: 'none' }}>
+                    View All
+                </Link>
             </div>
 
             {loading ? (
@@ -156,28 +162,61 @@ export default function SafeHavensPreview() {
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                     {havens.map(haven => (
-                        <div key={haven.id} className="card" style={{ padding: '15px', cursor: 'pointer' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                                <div style={{ fontWeight: 700, fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
-                                    {haven.name}
-                                </div>
-                                <div style={{
-                                    background: 'rgba(78, 205, 196, 0.1)', color: 'var(--primary-teal-dark)',
-                                    padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 700
+                        <div key={haven.id} className="card" style={{ padding: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{
+                                    background: 'rgba(78, 205, 196, 0.1)',
+                                    color: 'var(--primary-teal-dark)',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
                                 }}>
-                                    {haven.score}
+                                    {haven.type === 'Park' && <Trees size={12} />}
+                                    {haven.type === 'Library' && <BookOpen size={12} />}
+                                    {haven.type === 'Cafe' && <Coffee size={12} />}
+                                    {haven.type}
+                                </span>
+                                <span style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--primary-teal-dark)' }}>{haven.distance}</span>
+                            </div>
+
+                            <h4 style={{ fontSize: '1rem', marginBottom: '6px', color: 'var(--neutral-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {haven.name}
+                            </h4>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', fontSize: '0.85rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', color: '#ECC94B', fontWeight: 700 }}>
+                                    <Star size={14} fill="#ECC94B" /> {haven.rating}
+                                </div>
+                                <div style={{ color: 'var(--primary-teal-dark)', fontWeight: 600 }}>
+                                    {haven.score} Calm Score
                                 </div>
                             </div>
-                            <div style={{ fontSize: '0.9rem', color: 'var(--neutral-text-light)', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                {haven.type === 'Park' && <Trees size={14} />}
-                                {haven.type === 'Library' && <BookOpen size={14} />}
-                                {haven.type === 'Cafe' && <Coffee size={14} />}
-                                {haven.type} • {haven.distance}
+
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                {haven.features.slice(0, 2).map(f => (
+                                    <span key={f} style={{
+                                        fontSize: '0.65rem',
+                                        background: 'rgba(0,0,0,0.04)',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        color: 'var(--neutral-text-light)'
+                                    }}>
+                                        {f}
+                                    </span>
+                                ))}
                             </div>
-                            <div style={{ color: '#F6E05E', fontSize: '0.9rem', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Star size={12} fill="#F6E05E" />
-                                {haven.rating} <span style={{ color: 'var(--neutral-text-light)' }}>({haven.score} Calm Score)</span>
-                            </div>
+
+                            <button
+                                className="btn-primary"
+                                style={{ width: '100%', padding: '8px', fontSize: '0.85rem', gap: '6px' }}
+                                onClick={() => handleNavigate(haven)}
+                            >
+                                <Navigation size={14} /> Navigate
+                            </button>
                         </div>
                     ))}
                 </div>

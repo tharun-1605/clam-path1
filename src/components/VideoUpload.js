@@ -22,7 +22,7 @@ export default function VideoUpload() {
     return (
         <motion.div
             className="glass-panel"
-            style={{ position: 'absolute', top: '20px', right: '20px', padding: '10px', zIndex: 20, display: 'flex', alignItems: 'center', gap: '10px' }}
+            style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '15px', background: 'transparent', border: 'none', boxShadow: 'none' }}
         >
             <label htmlFor="video-upload" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.9rem' }}>
                 <Upload size={16} />
