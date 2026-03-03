@@ -234,6 +234,7 @@ export default function DashboardPage() {
                     </div>
                     <MusicPlayer />
                 </div>
+
             </div>
 
             <style jsx>{`

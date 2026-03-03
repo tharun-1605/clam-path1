@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
-import { AlertCircle, History, LogOut, Map, Moon, Navigation, Settings, Shield, Sun, User, X, Heart } from 'lucide-react';
+import { AlertCircle, History, LogOut, Map, Moon, Navigation, Settings, Shield, Sun, User, X, Heart, MessageCircle } from 'lucide-react';
 
 export default function Sidebar({ onNavigate, onClose, mobile = false }) {
     const pathname = usePathname();
@@ -17,6 +17,7 @@ export default function Sidebar({ onNavigate, onClose, mobile = false }) {
         { name: 'Routes', href: '/dashboard/routes', icon: Navigation },
         { name: 'Safe Havens', href: '/dashboard/safe-havens', icon: Shield },
         { name: 'Community', href: '/dashboard/community', icon: Heart },
+        { name: 'Calm Chat', href: '/dashboard/calm-chat', icon: MessageCircle },
         { name: 'History', href: '/dashboard/history', icon: History },
         { name: 'Panic Mode', href: '/panic', icon: AlertCircle },
         { name: 'Profile', href: '/dashboard/profile', icon: User },
