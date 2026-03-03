@@ -1,11 +1,56 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import VideoUpload from '../../../components/VideoUpload';
 
 export default function CommunityPage() {
     const [calmScore, setCalmScore] = useState(5);
     const [notes, setNotes] = useState('');
+    const [locationText, setLocationText] = useState('Detecting current location...');
+
+    useEffect(() => {
+        if (!navigator.geolocation) {
+            setLocationText('Current Location: Unavailable');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                const label = await reverseGeocode(latitude, longitude);
+                setLocationText(`Current Location: ${label}`);
+            },
+            () => {
+                setLocationText('Current Location: Permission denied');
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        );
+    }, []);
+
+    const reverseGeocode = async (lat, lng) => {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=16&addressdetails=1`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('reverse geocode failed');
+
+            const data = await response.json();
+            const address = data?.address || {};
+            const label =
+                address.road ||
+                address.neighbourhood ||
+                address.suburb ||
+                address.city_district ||
+                address.city ||
+                address.town ||
+                address.village;
+
+            if (label) return label;
+        } catch {
+            // use coordinate fallback
+        }
+
+        return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -26,7 +71,7 @@ export default function CommunityPage() {
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                         <div>
                             <label style={{ display: 'block', marginBottom: '10px', fontWeight: 600 }}>Location</label>
-                            <input type="text" defaultValue="Current Location: Main St & 5th Ave" readOnly />
+                            <input type="text" value={locationText} readOnly />
                         </div>
 
                         <div>
