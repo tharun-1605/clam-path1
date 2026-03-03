@@ -4,13 +4,13 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyB_VkMt50Gopzy2Tt_q3FhopVHNW0-UkW8",
-    authDomain: "smart-campus-manager.firebaseapp.com",
-    projectId: "smart-campus-manager",
-    storageBucket: "smart-campus-manager.firebasestorage.app",
-    messagingSenderId: "35838544206",
-    appId: "1:35838544206:web:88b32b4021a69248de761f",
-    measurementId: "G-2P1JGMHKV2"
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyB_VkMt50Gopzy2Tt_q3FhopVHNW0-UkW8",
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "smart-campus-manager.firebaseapp.com",
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "smart-campus-manager",
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "smart-campus-manager.firebasestorage.app",
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "35838544206",
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:35838544206:web:88b32b4021a69248de761f",
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-2P1JGMHKV2"
 };
 
 // Initialize Firebase
