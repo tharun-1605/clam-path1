@@ -5,7 +5,8 @@ Desktop-first web app inspired by the Neuro Nav concept for autism-friendly navi
 ## Run locally
 
 1. Open `index.html` directly in a browser, or serve with any static server.
-2. Add Firebase values in `firebase-config.example.js` and rename to `firebase-config.js`.
+2. Copy `firebase-config.example.js` to `firebase-config.js` and fill project values.
+3. If `firebase-config.js` is missing, the app runs in local storage mode.
 
 ## Feature roadmap in this repo
 
