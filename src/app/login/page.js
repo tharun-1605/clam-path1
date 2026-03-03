@@ -60,6 +60,11 @@ export default function LoginPage() {
                         {authError}
                     </div>
                 )}
+
+                <div style={{ marginTop: '10px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.65)', textAlign: 'left' }}>
+                    Host: {typeof window !== 'undefined' ? window.location.hostname : 'n/a'}<br />
+                    Firebase Project: {process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'unset'}
+                </div>
             </motion.div>
         </div>
     );
