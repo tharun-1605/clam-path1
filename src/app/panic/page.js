@@ -85,20 +85,14 @@ export default function PanicModePage() {
                     let closest = null;
 
                     data.elements.forEach(place => {
+                        if (!place || place.lat == null || place.lon == null || !place.tags) return;
                         const d = getDistanceFromLatLonInKm(lat, lon, place.lat, place.lon);
                         if (d < minDist) {
                             minDist = d;
+                            const tags = place.tags || {};
                             closest = {
-                                name: place.tags.name || "Quiet Spot",
-                                type: place.tags.leisure === 'park' ? 'Park' : (place.tags.amenity === 'library' ? 'Library' : 'Cafe'),
-                                distance: `${(minDist * 0.621371).toFixed(1)} mi`,
-                                walkTime: `${Math.ceil(minDist * 15)} min walk`, // rough est
-                                lat: place.lat,
-                                lon: place.lon
-                            };
-                        }
-                    });
-
+                                name: tags.name || "Quiet Spot",
+                                type: tags.leisure === 'park' ? 'Park' : (tags.amenity === 'library' ? 'Library' : 'Cafe'),
                     setNearestHaven(closest);
                     setStep('found');
                     success = true;

@@ -26,8 +26,8 @@ export default function SafeHavensPreview() {
                     fetchNearbyPlaces(latitude, longitude);
                 },
                 (err) => {
-                    console.error("Geo Error:", err);
-                    setError("Enable location to see real places.");
+                    // geolocation failures are expected when user denies permission
+                    console.warn("Geo Error:", err);
                     setLoading(false);
                 }
             );
@@ -76,26 +76,29 @@ export default function SafeHavensPreview() {
                 const data = await response.json();
 
                 if (data.elements) {
-                    const processed = data.elements.map(place => {
-                        // Calculate simplified distance
-                        const dist = getDistanceFromLatLonInKm(lat, lon, place.lat, place.lon);
+                    const processed = data.elements
+                        .filter(place => place && place.lat != null && place.lon != null && place.tags)
+                        .map(place => {
+                            // Calculate simplified distance
+                            const dist = getDistanceFromLatLonInKm(lat, lon, place.lat, place.lon);
 
-                        // Determine type and score
-                        let type = "Place";
-                        let score = 8.0;
-                        if (place.tags.leisure === 'park') { type = 'Park'; score = 9.5; }
-                        if (place.tags.amenity === 'library') { type = 'Library'; score = 9.0; }
-                        if (place.tags.amenity === 'cafe') { type = 'Cafe'; score = 7.5; }
+                            // Determine type and score with safe tag access
+                            const tags = place.tags || {};
+                            let type = "Place";
+                            let score = 8.0;
+                            if (tags.leisure === 'park') { type = 'Park'; score = 9.5; }
+                            else if (tags.amenity === 'library') { type = 'Library'; score = 9.0; }
+                            else if (tags.amenity === 'cafe') { type = 'Cafe'; score = 7.5; }
 
-                        return {
-                            id: place.id,
-                            name: place.tags.name || `${type} (Unnamed)`,
-                            type: type,
-                            distance: `${(dist * 0.621371).toFixed(1)} mi`, // convert km to miles
-                            rating: 4.5, // Mock rating as OSM doesn't have ratings
-                            score: score
-                        };
-                    });
+                            return {
+                                id: place.id,
+                                name: tags.name || `${type} (Unnamed)`,
+                                type: type,
+                                distance: `${(dist * 0.621371).toFixed(1)} mi`, // convert km to miles
+                                rating: 4.5, // Mock rating as OSM doesn't have ratings
+                                score: score
+                            };
+                        });
                     // Filter duplicates or bad names if needed
                     const validPlaces = processed.slice(0, 10); // Take top 10
                     setHavens(validPlaces.length > 0 ? validPlaces : []);
