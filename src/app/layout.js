@@ -5,7 +5,6 @@ import { ThemeProvider } from '../components/ThemeContext';
 export const metadata = {
     title: 'Neuro-Nav',
     description: 'Sensory-safe city navigation',
-    manifest: '/manifest.json',
 };
 
 export default function RootLayout({ children }) {

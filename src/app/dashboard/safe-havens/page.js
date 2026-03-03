@@ -125,7 +125,10 @@ export default function SafeHavensPage() {
     }
 
     const handleNavigate = (haven) => {
-        const url = `https://www.google.com/maps/dir/?api=1&destination=${haven.lat},${haven.lng}`;
+        let url = `https://www.google.com/maps/dir/?api=1&destination=${haven.lat},${haven.lng}`;
+        if (userLoc) {
+            url += `&origin=${userLoc.lat},${userLoc.lng}`;
+        }
         window.open(url, '_blank');
     };
 
