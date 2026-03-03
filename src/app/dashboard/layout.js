@@ -46,6 +46,7 @@ export default function DashboardLayout({ children }) {
                     grid-template-columns: 280px minmax(0, 1fr);
                     gap: 16px;
                     padding: 16px;
+                    align-items: start;
                 }
 
                 .desktop-sidebar {
@@ -71,8 +72,9 @@ export default function DashboardLayout({ children }) {
                 .dashboard-main {
                     flex: 1;
                     min-height: calc(100vh - 32px);
-                    padding: 14px;
+                    padding: 16px;
                     overflow: auto;
+                    border: 1px solid color-mix(in oklab, var(--neutral-border) 82%, rgba(16, 33, 56, 0.16));
                 }
 
                 .mobile-overlay {
@@ -92,7 +94,7 @@ export default function DashboardLayout({ children }) {
                 @media (max-width: 1024px) {
                     .dashboard-shell {
                         grid-template-columns: 1fr;
-                        padding: 10px;
+                        padding: 8px;
                         gap: 10px;
                     }
 
@@ -106,7 +108,7 @@ export default function DashboardLayout({ children }) {
 
                     .dashboard-main {
                         min-height: calc(100vh - 88px);
-                        padding: 10px;
+                        padding: 10px 8px;
                     }
                 }
             `}</style>

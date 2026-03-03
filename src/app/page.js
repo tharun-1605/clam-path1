@@ -11,7 +11,7 @@ export default function LandingPage() {
             <nav className="glass-panel" style={{
                 position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
                 width: '90%', maxWidth: '1200px', padding: '15px 30px', zIndex: 100,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
             }}>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-1px' }} className="text-gradient">
                     Neuro-Nav
@@ -46,7 +46,7 @@ export default function LandingPage() {
                             <span className="text-gradient">Mindful Journeys</span>
                         </h1>
                         <p style={{ fontSize: '1.2rem', color: 'var(--neutral-text-light)', marginBottom: '40px', lineHeight: 1.6 }}>
-                            Navigate the city with confidence. avoidance sensory overload with real-time noise data, crowd avoidance, and instant safe havens.
+                            Navigate the city with confidence by avoiding sensory overload with real-time noise data, crowd-aware routing, and instant safe havens.
                         </p>
 
                         <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -85,6 +85,16 @@ export default function LandingPage() {
                     </div>
                 </div>
             </section>
+
+            <style jsx>{`
+                @media (max-width: 760px) {
+                    nav {
+                        top: 10px !important;
+                        width: calc(100% - 20px) !important;
+                        padding: 10px 12px !important;
+                    }
+                }
+            `}</style>
 
         </div>
     );

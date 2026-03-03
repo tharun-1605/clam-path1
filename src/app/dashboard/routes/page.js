@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../components/AuthContext';
 import { getCommunityCalmStatsNear, getLoudWarningsNear } from '../../../lib/communityReports';
 
@@ -12,6 +12,12 @@ const OVERPASS_SERVERS = [
     'https://overpass.kumi.systems/api/interpreter'
 ];
 
+const DEFAULT_PREFS = {
+    soundSensitivity: 80,
+    lightSensitivity: 60,
+    crowdTolerance: 40
+};
+
 export default function RoutesPage() {
     const { user } = useAuth();
     const [originMode, setOriginMode] = useState('manual');
@@ -19,6 +25,8 @@ export default function RoutesPage() {
     const [destination, setDestination] = useState('');
     const [loading, setLoading] = useState(false);
     const [route, setRoute] = useState(null);
+    const [alternatives, setAlternatives] = useState([]);
+    const [historicalAvgDb, setHistoricalAvgDb] = useState(52);
     const [locating, setLocating] = useState(false);
     const [currentOrigin, setCurrentOrigin] = useState({
         label: '',
@@ -26,6 +34,21 @@ export default function RoutesPage() {
         lon: null,
         error: ''
     });
+    const [preferences, setPreferences] = useState(DEFAULT_PREFS);
+
+    useEffect(() => {
+        if (!user?.uid) return;
+        try {
+            const saved = JSON.parse(localStorage.getItem(`neuro-nav-preferences:${user.uid}`) || 'null');
+            if (saved) setPreferences(saved);
+        } catch {
+            setPreferences(DEFAULT_PREFS);
+        }
+    }, [user?.uid]);
+
+    useEffect(() => {
+        loadHistoricalNoise();
+    }, []);
 
     const saveRouteToHistory = (entry) => {
         try {
@@ -71,6 +94,7 @@ export default function RoutesPage() {
 
         setLoading(true);
         setRoute(null);
+        setAlternatives([]);
 
         try {
             let coords1;
@@ -91,17 +115,23 @@ export default function RoutesPage() {
             const coords2 = await getCoordinates(destination);
             if (!coords2) throw new Error(`Could not find location: ${destination}`);
 
-            const stats = await getRouteStats(coords1, coords2);
+            const scoredRoutes = await getSensoryRoutes(coords1, coords2, preferences, historicalAvgDb);
+            if (!scoredRoutes.length) throw new Error('No routes available');
 
+            const best = scoredRoutes[0];
             const nextRoute = {
-                duration: stats.duration,
-                distance: stats.distance,
-                noiseLevel: stats.noiseLevel,
-                calmScore: stats.calmScore,
-                description: `A sensory-safe route from ${startLabel} to ${destination}. Real-time data fetched via OSRM${stats.communityCount ? ` + ${stats.communityCount} nearby community reports` : ''}.`
+                duration: best.durationLabel,
+                distance: best.distanceLabel,
+                noiseLevel: best.noiseLabel,
+                calmScore: best.calmScore,
+                sensoryRisk: best.sensoryRisk,
+                routeIndex: best.routeIndex,
+                description: `Lowest sensory-impact path selected from ${scoredRoutes.length} options using historical noise, real-time context, community alerts, and your sensory profile.`
             };
 
             setRoute(nextRoute);
+            setAlternatives(scoredRoutes.slice(1, 4));
+
             saveRouteToHistory({
                 id: Date.now(),
                 createdAt: new Date().toISOString(),
@@ -120,9 +150,12 @@ export default function RoutesPage() {
                 distance: 'Unknown',
                 noiseLevel: 'Estimated (50 dB)',
                 calmScore: 6.0,
-                description: `Could not fetch exact stats (${err.message}). Showing map path.`
+                sensoryRisk: 50,
+                routeIndex: 1,
+                description: `Could not compute full sensory routing (${err.message}).`
             };
             setRoute(fallbackRoute);
+            setAlternatives([]);
             saveRouteToHistory({
                 id: Date.now(),
                 createdAt: new Date().toISOString(),
@@ -138,6 +171,22 @@ export default function RoutesPage() {
             setLoading(false);
         }
     };
+
+    async function loadHistoricalNoise() {
+        try {
+            const res = await fetch('/api/sensory-data', { cache: 'no-store' });
+            if (!res.ok) return;
+            const payload = await res.json();
+            const rows = payload?.data || [];
+            const values = rows.map((r) => Number(r.decibel)).filter((v) => Number.isFinite(v));
+            if (values.length) {
+                const avg = values.reduce((a, b) => a + b, 0) / values.length;
+                setHistoricalAvgDb(Number(avg.toFixed(1)));
+            }
+        } catch {
+            // keep default
+        }
+    }
 
     async function reverseGeocode(lat, lon) {
         try {
@@ -165,126 +214,150 @@ export default function RoutesPage() {
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
             const data = await res.json();
-            if (data && data.length > 0) return { lat: data[0].lat, lon: data[0].lon };
+            if (data && data.length > 0) return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
             return null;
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-    }
-
-    async function getRouteStats(c1, c2) {
-        try {
-            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${c1.lon},${c1.lat};${c2.lon},${c2.lat}?overview=full&geometries=geojson`);
-            const data = await res.json();
-            if (data.routes && data.routes.length > 0) {
-                const r = data.routes[0];
-                const distKm = (r.distance / 1000).toFixed(1);
-                const durMin = Math.round(r.duration / 60);
-                const hours = Math.floor(durMin / 60);
-                const mins = durMin % 60;
-                const noiseLevel = await estimateNoiseLevel(r, Number(distKm));
-                return {
-                    distance: `${distKm} km`,
-                    duration: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`,
-                    noiseLevel: noiseLevel.label,
-                    calmScore: noiseLevel.calmScore,
-                    communityCount: noiseLevel.communityCount
-                };
-            }
-        } catch (e) {
-            console.error(e);
-        }
-        return { distance: 'Unknown', duration: 'Unknown', noiseLevel: 'Estimated (50 dB)', calmScore: 6.0, communityCount: 0 };
-    }
-
-    async function estimateNoiseLevel(routeObj, distKm) {
-        let db = 38 + (distKm * 0.6);
-
-        try {
-            const points = routeObj?.geometry?.coordinates || [];
-            if (points.length > 0) {
-                const mid = points[Math.floor(points.length / 2)];
-                const midLon = mid[0];
-                const midLat = mid[1];
-
-                const query = `
-                    [out:json][timeout:10];
-                    (
-                      way["highway"~"motorway|trunk|primary|secondary"](around:900,${midLat},${midLon});
-                      way["railway"](around:900,${midLat},${midLon});
-                      node["amenity"~"bus_station|fuel|marketplace"](around:900,${midLat},${midLon});
-                    );
-                    out tags 60;
-                `;
-
-                let elements = [];
-                for (const server of OVERPASS_SERVERS) {
-                    try {
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), 5000);
-                        const response = await fetch(server, { method: 'POST', body: query, signal: controller.signal });
-                        clearTimeout(timeout);
-                        if (!response.ok) continue;
-                        const data = await response.json();
-                        elements = data?.elements || [];
-                        if (elements.length) break;
-                    } catch {
-                        // try next server
-                    }
-                }
-
-                if (elements.length) {
-                    let majorRoads = 0;
-                    let rail = 0;
-                    let transportNodes = 0;
-
-                    for (const el of elements) {
-                        const tags = el?.tags || {};
-                        if (tags.highway) majorRoads += 1;
-                        if (tags.railway) rail += 1;
-                        if (tags.amenity === 'bus_station' || tags.amenity === 'fuel' || tags.amenity === 'marketplace') {
-                            transportNodes += 1;
-                        }
-                    }
-
-                    db += Math.min(majorRoads, 12) * 1.4;
-                    db += Math.min(rail, 4) * 2.2;
-                    db += Math.min(transportNodes, 10) * 0.7;
-                }
-            }
         } catch {
-            // fallback to base estimate
+            return null;
+        }
+    }
+
+    async function getSensoryRoutes(c1, c2, prefs, historicalDb) {
+        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${c1.lon},${c1.lat};${c2.lon},${c2.lat}?overview=full&geometries=geojson&alternatives=true&steps=false`);
+        const data = await res.json();
+        const routes = data?.routes || [];
+        if (!routes.length) return [];
+
+        const scored = [];
+        for (let i = 0; i < routes.length; i += 1) {
+            const routeObj = routes[i];
+            const summary = await scoreRoute(routeObj, i + 1, prefs, historicalDb);
+            scored.push(summary);
         }
 
-        if (routeObj?.geometry?.coordinates?.length > 0) {
-            const mid = routeObj.geometry.coordinates[Math.floor(routeObj.geometry.coordinates.length / 2)];
-            const community = getCommunityCalmStatsNear(mid[1], mid[0], 2.5);
-            const loudBinaryWarnings = getLoudWarningsNear(mid[1], mid[0], {
-                radiusKm: 0.6,
-                withinMinutes: 120
-            });
-            if (loudBinaryWarnings.length > 0) {
-                db += Math.min(loudBinaryWarnings.length, 5) * 3.2;
-            }
-            if (community.count > 0) {
-                // Low community calm raises expected dB, high calm lowers it.
-                db += (5 - community.avgCalm) * 2.1;
-                const boundedWithCommunity = Math.max(35, Math.min(78, db));
-                const roundedWithCommunity = Math.round(boundedWithCommunity);
-                const calmScore = Number(Math.max(1, Math.min(10, (10 - ((roundedWithCommunity - 35) / 4.3)) + ((community.avgCalm - 5) * 0.15))).toFixed(1));
-                if (roundedWithCommunity <= 45) return { label: `Quiet (${roundedWithCommunity} dB)`, calmScore, communityCount: community.count };
-                if (roundedWithCommunity <= 58) return { label: `Moderate (${roundedWithCommunity} dB)`, calmScore, communityCount: community.count };
-                return { label: `Busy (${roundedWithCommunity} dB)`, calmScore, communityCount: community.count };
+        return scored.sort((a, b) => a.sensoryRisk - b.sensoryRisk);
+    }
+
+    async function scoreRoute(routeObj, routeIndex, prefs, historicalDb) {
+        const distanceKm = routeObj.distance / 1000;
+        const durationMin = Math.max(1, Math.round(routeObj.duration / 60));
+        const hours = Math.floor(durationMin / 60);
+        const mins = durationMin % 60;
+
+        const points = routeObj?.geometry?.coordinates || [];
+        const samplePoints = pickSamplePoints(points);
+        const realtime = await getRealtimeContext(samplePoints);
+
+        const communityStats = samplePoints.length
+            ? getCommunityCalmStatsNear(samplePoints[0].lat, samplePoints[0].lon, 2.5)
+            : { count: 0, avgCalm: null };
+        const loudWarnings = samplePoints.length
+            ? getLoudWarningsNear(samplePoints[0].lat, samplePoints[0].lon, { radiusKm: 0.6, withinMinutes: 120 })
+            : [];
+
+        const estimatedDb = Math.round(
+            0.45 * historicalDb +
+            0.35 * realtime.db +
+            0.2 * (38 + distanceKm * 0.8 + Math.min(loudWarnings.length, 5) * 3)
+        );
+
+        const noiseRisk = normalize(estimatedDb, 35, 80);
+        const crowdRisk = normalize(realtime.crowdIndex + loudWarnings.length * 1.2, 0, 16);
+        const lightRisk = normalize(realtime.lightIndex, 0, 10);
+        const communityRisk = communityStats.count > 0 ? normalize(10 - communityStats.avgCalm, 0, 10) : 0.45;
+
+        const soundWeight = 0.45 + (prefs.soundSensitivity / 100) * 0.35;
+        const crowdWeight = 0.25 + ((100 - prefs.crowdTolerance) / 100) * 0.35;
+        const lightWeight = 0.15 + (prefs.lightSensitivity / 100) * 0.2;
+        const contextWeight = 0.15;
+        const totalWeight = soundWeight + crowdWeight + lightWeight + contextWeight;
+
+        const combinedRisk =
+            (noiseRisk * soundWeight +
+                crowdRisk * crowdWeight +
+                lightRisk * lightWeight +
+                communityRisk * contextWeight) / totalWeight;
+
+        const timePenalty = normalize(durationMin, 5, 90) * 0.08;
+        const sensoryRisk = Number(Math.min(100, Math.max(1, (combinedRisk + timePenalty) * 100)).toFixed(1));
+        const calmScore = Number(Math.max(1, Math.min(10, 10 - sensoryRisk / 12)).toFixed(1));
+
+        return {
+            routeIndex,
+            durationLabel: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`,
+            distanceLabel: `${distanceKm.toFixed(1)} km`,
+            noiseLabel: noiseToLabel(estimatedDb),
+            sensoryRisk,
+            calmScore,
+            estimatedDb,
+            communityCount: communityStats.count
+        };
+    }
+
+    function pickSamplePoints(points) {
+        if (!points.length) return [];
+        const idxs = [0, Math.floor(points.length / 2), Math.max(0, points.length - 1)];
+        return idxs.map((idx) => ({ lon: points[idx][0], lat: points[idx][1] }));
+    }
+
+    async function getRealtimeContext(samples) {
+        if (!samples.length) return { db: 50, crowdIndex: 4, lightIndex: 3 };
+        const center = samples[Math.floor(samples.length / 2)];
+
+        const query = `
+            [out:json][timeout:10];
+            (
+              way["highway"~"motorway|trunk|primary|secondary"](around:900,${center.lat},${center.lon});
+              node["amenity"~"bus_station|marketplace|fuel|parking"](around:900,${center.lat},${center.lon});
+              node["shop"](around:900,${center.lat},${center.lon});
+            );
+            out tags 80;
+        `;
+
+        let elements = [];
+        for (const server of OVERPASS_SERVERS) {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 5000);
+                const response = await fetch(server, { method: 'POST', body: query, signal: controller.signal });
+                clearTimeout(timeout);
+                if (!response.ok) continue;
+                const data = await response.json();
+                elements = data?.elements || [];
+                if (elements.length) break;
+            } catch {
+                // next mirror
             }
         }
 
-        const bounded = Math.max(35, Math.min(78, db));
-        const rounded = Math.round(bounded);
-        const calmScore = Number(Math.max(1, Math.min(10, 10 - ((rounded - 35) / 4.3))).toFixed(1));
-        if (rounded <= 45) return { label: `Quiet (${rounded} dB)`, calmScore, communityCount: 0 };
-        if (rounded <= 58) return { label: `Moderate (${rounded} dB)`, calmScore, communityCount: 0 };
-        return { label: `Busy (${rounded} dB)`, calmScore, communityCount: 0 };
+        let roads = 0;
+        let crowdNodes = 0;
+        let shops = 0;
+        for (const el of elements) {
+            const tags = el?.tags || {};
+            if (tags.highway) roads += 1;
+            if (tags.amenity === 'bus_station' || tags.amenity === 'marketplace' || tags.amenity === 'parking' || tags.amenity === 'fuel') {
+                crowdNodes += 1;
+            }
+            if (tags.shop) shops += 1;
+        }
+
+        const db = Math.round(42 + Math.min(roads, 12) * 1.3 + Math.min(crowdNodes, 10) * 1.1 + Math.min(shops, 12) * 0.4);
+        const crowdIndex = Math.min(16, crowdNodes + shops * 0.35);
+        const lightIndex = Math.min(10, shops * 0.5 + roads * 0.2);
+
+        return { db, crowdIndex, lightIndex };
+    }
+
+    function noiseToLabel(db) {
+        if (db <= 45) return `Quiet (${db} dB)`;
+        if (db <= 58) return `Moderate (${db} dB)`;
+        return `Busy (${db} dB)`;
+    }
+
+    function normalize(value, min, max) {
+        if (max <= min) return 0;
+        const n = (value - min) / (max - min);
+        return Math.max(0, Math.min(1, n));
     }
 
     useEffect(() => {
@@ -297,6 +370,10 @@ export default function RoutesPage() {
         ? `${currentOrigin.lat},${currentOrigin.lon}`
         : origin;
 
+    const prefLabel = useMemo(() => {
+        return `Prefs: Sound ${preferences.soundSensitivity} / Light ${preferences.lightSensitivity} / Crowd tol ${preferences.crowdTolerance}`;
+    }, [preferences]);
+
     return (
         <div className="routes-grid">
             <motion.div
@@ -305,8 +382,14 @@ export default function RoutesPage() {
                 style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
             >
                 <h1 className="text-gradient" style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', fontWeight: 800 }}>
-                    Quiet Route Planner
+                    Sensory Route Planner
                 </h1>
+                <div style={{ fontSize: '.85rem', color: 'var(--neutral-text-light)' }}>
+                    Uses historical noise + real-time context + community data + your sensory profile.
+                </div>
+                <div style={{ fontSize: '.8rem', color: 'var(--neutral-text-light)' }}>
+                    {prefLabel} | Historical noise baseline: {historicalAvgDb} dB
+                </div>
 
                 <div className="glass-panel" style={{ padding: '1.1rem' }}>
                     <form onSubmit={handleSearch} style={{ display: 'grid', gap: '1rem' }}>
@@ -343,7 +426,7 @@ export default function RoutesPage() {
                         </div>
 
                         <button type="submit" className="btn-primary" disabled={loading}>
-                            {loading ? 'Analyzing Route...' : 'Find Quiet Route'}
+                            {loading ? 'Computing Sensory Risk...' : 'Find Lowest Sensory-Impact Route'}
                         </button>
                     </form>
                 </div>
@@ -355,7 +438,9 @@ export default function RoutesPage() {
                         className="glass-panel"
                         style={{ padding: '1rem', borderLeft: '4px solid var(--success)' }}
                     >
-                        <h3 style={{ marginBottom: '.9rem', color: 'var(--success)' }}>Route Optimized</h3>
+                        <h3 style={{ marginBottom: '.9rem', color: 'var(--success)' }}>
+                            Recommended Route #{route.routeIndex}
+                        </h3>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '.8rem', marginBottom: '.9rem' }}>
                             <div>
                                 <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Est. Time</span>
@@ -366,16 +451,36 @@ export default function RoutesPage() {
                                 <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.distance}</span>
                             </div>
                             <div>
-                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Avg Noise</span>
+                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Noise</span>
                                 <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.noiseLevel}</span>
                             </div>
                             <div>
                                 <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Calm Score</span>
                                 <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{Number(route.calmScore || 0).toFixed(1)}</span>
                             </div>
+                            <div>
+                                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Sensory Risk</span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{route.sensoryRisk}</span>
+                            </div>
                         </div>
                         <p style={{ color: 'var(--foreground)', fontSize: '.88rem' }}>{route.description}</p>
                     </motion.div>
+                )}
+
+                {alternatives.length > 0 && (
+                    <div className="glass-panel" style={{ padding: '12px' }}>
+                        <h4 style={{ marginBottom: '8px' }}>Other Route Options</h4>
+                        <div style={{ display: 'grid', gap: '8px' }}>
+                            {alternatives.map((alt) => (
+                                <div key={alt.routeIndex} className="card" style={{ padding: '10px' }}>
+                                    <div style={{ fontWeight: 700 }}>Route #{alt.routeIndex}</div>
+                                    <div style={{ fontSize: '.84rem', color: 'var(--neutral-text-light)' }}>
+                                        Risk {alt.sensoryRisk} | Calm {alt.calmScore} | {alt.noiseLabel}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </motion.div>
 
@@ -385,7 +490,7 @@ export default function RoutesPage() {
                     {loading ? (
                         <div style={{ textAlign: 'center', zIndex: 10 }}>
                             <div className="spinner"></div>
-                            <h3 className="text-gradient">Analyzing Acoustic Data...</h3>
+                            <h3 className="text-gradient">Evaluating Sensory Risk...</h3>
                         </div>
                     ) : route ? (
                         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -409,28 +514,18 @@ export default function RoutesPage() {
                                     Open Full Map
                                 </a>
                                 <a
-                                    href={`https://wa.me/?text=${encodeURIComponent(`Check out this sensory-safe route from ${startForMaps} to ${destination}: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startForMaps)}&destination=${encodeURIComponent(destination)}`)}`}
+                                    href={`https://wa.me/?text=${encodeURIComponent(`Check out this low sensory route from ${startForMaps} to ${destination}: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startForMaps)}&destination=${encodeURIComponent(destination)}`)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="btn-primary"
                                 >
                                     Share
                                 </a>
-                                <button
-                                    type="button"
-                                    className="btn-secondary"
-                                    onClick={() => {
-                                        const msg = new SpeechSynthesisUtterance(`Starting quiet route from ${startForMaps} to ${destination}. This path is optimized for low noise levels.`);
-                                        window.speechSynthesis.speak(msg);
-                                    }}
-                                >
-                                    Speak
-                                </button>
                             </div>
                         </div>
                     ) : (
                         <div style={{ textAlign: 'center', zIndex: 10, opacity: 0.78 }}>
-                            <h3 style={{ color: 'var(--text-muted)' }}>Enter locations to generate path</h3>
+                            <h3 style={{ color: 'var(--text-muted)' }}>Enter locations to generate sensory-safe routes</h3>
                         </div>
                     )}
                 </div>
@@ -439,7 +534,7 @@ export default function RoutesPage() {
             <style jsx>{`
                 .routes-grid {
                     display: grid;
-                    grid-template-columns: minmax(280px, 390px) minmax(0, 1fr);
+                    grid-template-columns: minmax(290px, 430px) minmax(0, 1fr);
                     gap: 14px;
                     min-height: 100%;
                 }
@@ -496,7 +591,6 @@ export default function RoutesPage() {
                     .routes-grid {
                         grid-template-columns: 1fr;
                     }
-
                     .map-panel,
                     .map-stage {
                         min-height: 420px;
@@ -508,7 +602,6 @@ export default function RoutesPage() {
                     .map-stage {
                         min-height: 320px;
                     }
-
                     .map-actions {
                         position: static;
                         transform: none;
