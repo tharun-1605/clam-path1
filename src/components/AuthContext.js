@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { useRouter } from 'next/navigation';
 
@@ -41,6 +41,9 @@ export const AuthProvider = ({ children }) => {
             if (error?.code === 'auth/unauthorized-domain') {
                 const host = typeof window !== 'undefined' ? window.location.hostname : 'current host';
                 setAuthError(`Google login is blocked for this domain (${host}). Add it to Firebase Authentication > Settings > Authorized domains.`);
+            } else if (error?.code === 'auth/popup-blocked') {
+                setAuthError('Popup was blocked by browser. Continuing with redirect login...');
+                await signInWithRedirect(auth, googleProvider);
             } else if (error?.code === 'auth/popup-closed-by-user') {
                 setAuthError('Login popup was closed before completing sign in.');
             } else {
