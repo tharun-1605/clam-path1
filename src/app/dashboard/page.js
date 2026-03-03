@@ -7,7 +7,8 @@ import MusicPlayer from '../../components/MusicPlayer';
 import CalmScoreHeader from '../../components/CalmScoreHeader';
 import SafeHavensPreview from '../../components/SafeHavensPreview';
 import QuickActionGrid from '../../components/QuickActionGrid';
-import { getCommunityCalmStatsNear } from '../../lib/communityReports';
+import { getCommunityCalmStatsNear, getLoudWarningsNear } from '../../lib/communityReports';
+import { useAuth } from '../../components/AuthContext';
 
 const DEFAULT_COORDS = { lat: 40.785091, lng: -73.968285 };
 const DEFAULT_LOCATION = "Current Area";
@@ -20,11 +21,13 @@ const OVERPASS_SERVERS = [
 ];
 
 export default function DashboardPage() {
+    const { user } = useAuth();
     const [mounted, setMounted] = useState(false);
     const [mapCoords, setMapCoords] = useState(DEFAULT_COORDS);
     const [locationLabel, setLocationLabel] = useState("Detecting location...");
     const [calmScore, setCalmScore] = useState(DEFAULT_SCORE);
     const [communityStats, setCommunityStats] = useState({ count: 0, avgCalm: null, recent: [] });
+    const [loudWarnings, setLoudWarnings] = useState([]);
 
     useEffect(() => {
         setMounted(true);
@@ -43,7 +46,12 @@ export default function DashboardPage() {
                     resolveAreaCalmScore(latitude, longitude)
                 ]);
                 const nearbyCommunity = getCommunityCalmStatsNear(latitude, longitude, 3);
+                const nearbyLoud = getLoudWarningsNear(latitude, longitude, {
+                    excludeUserId: user?.uid || null,
+                    radiusKm: 0.5
+                });
                 setCommunityStats(nearbyCommunity);
+                setLoudWarnings(nearbyLoud);
 
                 const blendedScore = nearbyCommunity.count > 0
                     ? Number(((baseScore * 0.75) + (nearbyCommunity.avgCalm * 0.25)).toFixed(1))
@@ -57,7 +65,7 @@ export default function DashboardPage() {
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
         );
-    }, []);
+    }, [user?.uid]);
 
     const resolveLocationName = async (lat, lng) => {
         try {
@@ -187,6 +195,20 @@ export default function DashboardPage() {
 
                 <div className="glass-panel" style={{ padding: '20px' }}>
                     <h3 style={{ marginBottom: '15px' }}>Analysis</h3>
+                    {loudWarnings.length > 0 && (
+                        <div style={{
+                            marginBottom: '12px',
+                            padding: '10px',
+                            borderRadius: '10px',
+                            border: '1px solid rgba(243,95,95,0.35)',
+                            background: 'rgba(243,95,95,0.08)',
+                            color: '#b42323',
+                            fontSize: '.86rem',
+                            fontWeight: 700
+                        }}>
+                            Warning: {loudWarnings.length} loud audio report(s) near this location.
+                        </div>
+                    )}
                     <VideoUpload />
                     <div style={{ marginTop: '14px', display: 'grid', gap: '8px' }}>
                         <div style={{ fontSize: '.88rem', color: 'var(--neutral-text-light)' }}>

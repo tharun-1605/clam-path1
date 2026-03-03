@@ -38,6 +38,27 @@ export function getCommunityCalmStatsNear(lat, lon, radiusKm = 3) {
     };
 }
 
+export function getLoudWarningsNear(lat, lon, options = {}) {
+    const {
+        radiusKm = 0.4,
+        withinMinutes = 90,
+        excludeUserId = null,
+        limit = 5
+    } = options;
+
+    const cutoff = Date.now() - (withinMinutes * 60 * 1000);
+    const warnings = loadCommunityReports()
+        .filter((item) => item?.lat != null && item?.lon != null)
+        .filter((item) => Number(item.audioBinary || 0) === 1)
+        .filter((item) => new Date(item.createdAt).getTime() >= cutoff)
+        .filter((item) => !excludeUserId || item.userId !== excludeUserId)
+        .filter((item) => haversineKm(lat, lon, Number(item.lat), Number(item.lon)) <= radiusKm)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, limit);
+
+    return warnings;
+}
+
 export function haversineKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;

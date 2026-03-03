@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../../components/AuthContext';
-import { getCommunityCalmStatsNear } from '../../../lib/communityReports';
+import { getCommunityCalmStatsNear, getLoudWarningsNear } from '../../../lib/communityReports';
 
 const ROUTE_HISTORY_KEY = 'neuro-nav-route-history';
 const OVERPASS_SERVERS = [
@@ -260,6 +260,13 @@ export default function RoutesPage() {
         if (routeObj?.geometry?.coordinates?.length > 0) {
             const mid = routeObj.geometry.coordinates[Math.floor(routeObj.geometry.coordinates.length / 2)];
             const community = getCommunityCalmStatsNear(mid[1], mid[0], 2.5);
+            const loudBinaryWarnings = getLoudWarningsNear(mid[1], mid[0], {
+                radiusKm: 0.6,
+                withinMinutes: 120
+            });
+            if (loudBinaryWarnings.length > 0) {
+                db += Math.min(loudBinaryWarnings.length, 5) * 3.2;
+            }
             if (community.count > 0) {
                 // Low community calm raises expected dB, high calm lowers it.
                 db += (5 - community.avgCalm) * 2.1;
