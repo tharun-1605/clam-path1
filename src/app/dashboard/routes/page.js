@@ -1,17 +1,30 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../../components/AuthContext';
 
 const ROUTE_HISTORY_KEY = 'neuro-nav-route-history';
+const OVERPASS_SERVERS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+];
 
 export default function RoutesPage() {
     const { user } = useAuth();
+    const [originMode, setOriginMode] = useState('manual');
     const [origin, setOrigin] = useState('');
     const [destination, setDestination] = useState('');
     const [loading, setLoading] = useState(false);
     const [route, setRoute] = useState(null);
+    const [locating, setLocating] = useState(false);
+    const [currentOrigin, setCurrentOrigin] = useState({
+        label: '',
+        lat: null,
+        lon: null,
+        error: ''
+    });
 
     const saveRouteToHistory = (entry) => {
         try {
@@ -23,16 +36,56 @@ export default function RoutesPage() {
         }
     };
 
+    const detectCurrentLocation = () => {
+        if (!navigator.geolocation) {
+            setCurrentOrigin((prev) => ({ ...prev, error: 'Geolocation is not supported in this browser.' }));
+            return;
+        }
+
+        setLocating(true);
+        setCurrentOrigin((prev) => ({ ...prev, error: '' }));
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                const label = await reverseGeocode(lat, lon);
+                setCurrentOrigin({ label, lat, lon, error: '' });
+                setLocating(false);
+            },
+            () => {
+                setCurrentOrigin((prev) => ({
+                    ...prev,
+                    error: 'Could not fetch current location. Please allow location permission.'
+                }));
+                setLocating(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        );
+    };
+
     const handleSearch = async (e) => {
         e.preventDefault();
-        if (!origin || !destination) return;
+        if ((!origin && originMode === 'manual') || !destination) return;
 
         setLoading(true);
         setRoute(null);
 
         try {
-            const coords1 = await getCoordinates(origin);
-            if (!coords1) throw new Error(`Could not find location: ${origin}`);
+            let coords1;
+            let startLabel;
+
+            if (originMode === 'current') {
+                if (currentOrigin.lat == null || currentOrigin.lon == null) {
+                    throw new Error('Current location is not available yet. Please allow location access.');
+                }
+                coords1 = { lat: currentOrigin.lat, lon: currentOrigin.lon };
+                startLabel = currentOrigin.label || `${Number(currentOrigin.lat).toFixed(4)}, ${Number(currentOrigin.lon).toFixed(4)}`;
+            } else {
+                coords1 = await getCoordinates(origin);
+                if (!coords1) throw new Error(`Could not find location: ${origin}`);
+                startLabel = origin.trim();
+            }
 
             const coords2 = await getCoordinates(destination);
             if (!coords2) throw new Error(`Could not find location: ${destination}`);
@@ -42,8 +95,8 @@ export default function RoutesPage() {
             const nextRoute = {
                 duration: stats.duration,
                 distance: stats.distance,
-                noiseLevel: 'Quiet (42dB)',
-                description: `A sensory-safe route from ${origin} to ${destination}. Real-time data fetched via OSRM.`
+                noiseLevel: stats.noiseLevel,
+                description: `A sensory-safe route from ${startLabel} to ${destination}. Real-time data fetched via OSRM.`
             };
 
             setRoute(nextRoute);
@@ -52,7 +105,7 @@ export default function RoutesPage() {
                 createdAt: new Date().toISOString(),
                 userId: user?.uid || null,
                 userEmail: user?.email || null,
-                origin: origin.trim(),
+                origin: startLabel,
                 destination: destination.trim(),
                 duration: nextRoute.duration,
                 distance: nextRoute.distance,
@@ -63,7 +116,7 @@ export default function RoutesPage() {
             const fallbackRoute = {
                 duration: 'Calculated',
                 distance: 'Unknown',
-                noiseLevel: 'Quiet (42dB)',
+                noiseLevel: 'Estimated (50 dB)',
                 description: `Could not fetch exact stats (${err.message}). Showing map path.`
             };
             setRoute(fallbackRoute);
@@ -72,7 +125,7 @@ export default function RoutesPage() {
                 createdAt: new Date().toISOString(),
                 userId: user?.uid || null,
                 userEmail: user?.email || null,
-                origin: origin.trim(),
+                origin: originMode === 'current' ? (currentOrigin.label || 'Current Location') : origin.trim(),
                 destination: destination.trim(),
                 duration: fallbackRoute.duration,
                 distance: fallbackRoute.distance,
@@ -82,6 +135,28 @@ export default function RoutesPage() {
             setLoading(false);
         }
     };
+
+    async function reverseGeocode(lat, lon) {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=14&addressdetails=1`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('reverse geocode failed');
+            const data = await res.json();
+            const address = data?.address || {};
+            return (
+                address.suburb ||
+                address.neighbourhood ||
+                address.city_district ||
+                address.city ||
+                address.town ||
+                address.village ||
+                data?.display_name?.split(',')?.[0]?.trim() ||
+                `${lat.toFixed(4)}, ${lon.toFixed(4)}`
+            );
+        } catch {
+            return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        }
+    }
 
     async function getCoordinates(address) {
         try {
@@ -97,7 +172,7 @@ export default function RoutesPage() {
 
     async function getRouteStats(c1, c2) {
         try {
-            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${c1.lon},${c1.lat};${c2.lon},${c2.lat}?overview=false`);
+            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${c1.lon},${c1.lat};${c2.lon},${c2.lat}?overview=full&geometries=geojson`);
             const data = await res.json();
             if (data.routes && data.routes.length > 0) {
                 const r = data.routes[0];
@@ -105,16 +180,94 @@ export default function RoutesPage() {
                 const durMin = Math.round(r.duration / 60);
                 const hours = Math.floor(durMin / 60);
                 const mins = durMin % 60;
+                const noiseLevel = await estimateNoiseLevel(r, Number(distKm));
                 return {
                     distance: `${distKm} km`,
-                    duration: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`
+                    duration: hours > 0 ? `${hours}h ${mins}m` : `${mins} min`,
+                    noiseLevel
                 };
             }
         } catch (e) {
             console.error(e);
         }
-        return { distance: 'Unknown', duration: 'Unknown' };
+        return { distance: 'Unknown', duration: 'Unknown', noiseLevel: 'Estimated (50 dB)' };
     }
+
+    async function estimateNoiseLevel(routeObj, distKm) {
+        let db = 38 + (distKm * 0.6);
+
+        try {
+            const points = routeObj?.geometry?.coordinates || [];
+            if (points.length > 0) {
+                const mid = points[Math.floor(points.length / 2)];
+                const midLon = mid[0];
+                const midLat = mid[1];
+
+                const query = `
+                    [out:json][timeout:10];
+                    (
+                      way["highway"~"motorway|trunk|primary|secondary"](around:900,${midLat},${midLon});
+                      way["railway"](around:900,${midLat},${midLon});
+                      node["amenity"~"bus_station|fuel|marketplace"](around:900,${midLat},${midLon});
+                    );
+                    out tags 60;
+                `;
+
+                let elements = [];
+                for (const server of OVERPASS_SERVERS) {
+                    try {
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 5000);
+                        const response = await fetch(server, { method: 'POST', body: query, signal: controller.signal });
+                        clearTimeout(timeout);
+                        if (!response.ok) continue;
+                        const data = await response.json();
+                        elements = data?.elements || [];
+                        if (elements.length) break;
+                    } catch {
+                        // try next server
+                    }
+                }
+
+                if (elements.length) {
+                    let majorRoads = 0;
+                    let rail = 0;
+                    let transportNodes = 0;
+
+                    for (const el of elements) {
+                        const tags = el?.tags || {};
+                        if (tags.highway) majorRoads += 1;
+                        if (tags.railway) rail += 1;
+                        if (tags.amenity === 'bus_station' || tags.amenity === 'fuel' || tags.amenity === 'marketplace') {
+                            transportNodes += 1;
+                        }
+                    }
+
+                    db += Math.min(majorRoads, 12) * 1.4;
+                    db += Math.min(rail, 4) * 2.2;
+                    db += Math.min(transportNodes, 10) * 0.7;
+                }
+            }
+        } catch {
+            // fallback to base estimate
+        }
+
+        const bounded = Math.max(35, Math.min(78, db));
+        const rounded = Math.round(bounded);
+        if (rounded <= 45) return `Quiet (${rounded} dB)`;
+        if (rounded <= 58) return `Moderate (${rounded} dB)`;
+        return `Busy (${rounded} dB)`;
+    }
+
+    useEffect(() => {
+        if (originMode === 'current' && (currentOrigin.lat == null || currentOrigin.lon == null) && !locating) {
+            detectCurrentLocation();
+        }
+    }, [originMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const startForMaps = originMode === 'current' && currentOrigin.lat != null && currentOrigin.lon != null
+        ? `${currentOrigin.lat},${currentOrigin.lon}`
+        : origin;
 
     return (
         <div className="routes-grid">
@@ -130,13 +283,25 @@ export default function RoutesPage() {
                 <div className="glass-panel" style={{ padding: '1.1rem' }}>
                     <form onSubmit={handleSearch} style={{ display: 'grid', gap: '1rem' }}>
                         <div>
+                            <label style={{ display: 'block', marginBottom: '0.45rem', color: 'var(--neutral-text-light)' }}>Start Option</label>
+                            <select value={originMode} onChange={(e) => setOriginMode(e.target.value)}>
+                                <option value="manual">Enter Manually</option>
+                                <option value="current">Use Current Location</option>
+                            </select>
+                        </div>
+
+                        <div>
                             <label style={{ display: 'block', marginBottom: '0.45rem', color: 'var(--neutral-text-light)' }}>Start Location</label>
                             <input
                                 type="text"
                                 onChange={(e) => setOrigin(e.target.value)}
-                                value={origin}
-                                placeholder="e.g. Coimbatore"
+                                value={originMode === 'current' ? (locating ? 'Detecting your location...' : (currentOrigin.label || 'Current location not detected')) : origin}
+                                placeholder={originMode === 'current' ? 'Current Location' : 'e.g. Coimbatore'}
+                                disabled={originMode === 'current'}
                             />
+                            {originMode === 'current' && currentOrigin.error && (
+                                <div style={{ marginTop: '6px', fontSize: '.82rem', color: 'var(--accent-coral-dark)' }}>{currentOrigin.error}</div>
+                            )}
                         </div>
 
                         <div>
@@ -197,14 +362,14 @@ export default function RoutesPage() {
                                 height="100%"
                                 frameBorder="0"
                                 style={{ border: 0 }}
-                                src={`https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&output=embed`}
+                                src={`https://maps.google.com/maps?saddr=${encodeURIComponent(startForMaps)}&daddr=${encodeURIComponent(destination)}&output=embed`}
                                 allowFullScreen
                                 loading="lazy"
                             ></iframe>
 
                             <div className="map-actions">
                                 <a
-                                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`}
+                                    href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startForMaps)}&destination=${encodeURIComponent(destination)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="btn-secondary"
@@ -212,7 +377,7 @@ export default function RoutesPage() {
                                     Open Full Map
                                 </a>
                                 <a
-                                    href={`https://wa.me/?text=${encodeURIComponent(`Check out this sensory-safe route from ${origin} to ${destination}: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`)}`}
+                                    href={`https://wa.me/?text=${encodeURIComponent(`Check out this sensory-safe route from ${startForMaps} to ${destination}: https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startForMaps)}&destination=${encodeURIComponent(destination)}`)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="btn-primary"
@@ -223,7 +388,7 @@ export default function RoutesPage() {
                                     type="button"
                                     className="btn-secondary"
                                     onClick={() => {
-                                        const msg = new SpeechSynthesisUtterance(`Starting quiet route from ${origin} to ${destination}. This path is optimized for low noise levels.`);
+                                        const msg = new SpeechSynthesisUtterance(`Starting quiet route from ${startForMaps} to ${destination}. This path is optimized for low noise levels.`);
                                         window.speechSynthesis.speak(msg);
                                     }}
                                 >
