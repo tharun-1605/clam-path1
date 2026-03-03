@@ -121,7 +121,9 @@ export default function SafeHavensPreview() {
                                 type,
                                 distance: `${(dist * 0.621371).toFixed(1)} mi`,
                                 rating: 4.5,
-                                score
+                                score,
+                                lat: placeLat,
+                                lng: placeLon
                             };
                         });
 
@@ -160,6 +162,11 @@ export default function SafeHavensPreview() {
         return deg * (Math.PI / 180);
     }
 
+    const handleViewDetails = (haven) => {
+        const url = `https://www.google.com/maps/search/?api=1&query=${haven.lat},${haven.lng}`;
+        window.open(url, '_blank');
+    };
+
     return (
         <div className="glass-panel" style={{ padding: '20px', height: '100%', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -186,7 +193,7 @@ export default function SafeHavensPreview() {
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                     {havens.map((haven) => (
-                        <div key={haven.id} className="card" style={{ padding: '15px', cursor: 'pointer' }}>
+                        <div key={haven.id} className="card" style={{ padding: '15px', cursor: 'pointer' }} onClick={() => handleViewDetails(haven)}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                                 <div style={{ fontWeight: 700, fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
                                     {haven.name}
