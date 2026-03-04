@@ -186,7 +186,9 @@ export default function PanicModePage() {
 
             // Try server-side endpoint first (non-blocking)
             try {
-                await fetch('/api/alert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, lat, lon, timestamp: Date.now() }) });
+                // include an id to help clients deduplicate
+                const id = `panic_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+                await fetch('/api/alert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, message, lat, lon, timestamp: Date.now() }) });
             } catch (e) {
                 // ignore server errors
             }

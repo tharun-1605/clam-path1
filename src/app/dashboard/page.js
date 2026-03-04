@@ -28,6 +28,8 @@ export default function DashboardPage() {
     const [calmScore, setCalmScore] = useState(DEFAULT_SCORE);
     const [communityStats, setCommunityStats] = useState({ count: 0, avgCalm: null, recent: [] });
     const [loudWarnings, setLoudWarnings] = useState([]);
+    const [nearbyAlerts, setNearbyAlerts] = useState([]);
+    const [seenAlertIds, setSeenAlertIds] = useState(new Set());
 
     useEffect(() => {
         setMounted(true);
@@ -66,6 +68,56 @@ export default function DashboardPage() {
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
         );
     }, [user?.uid]);
+
+    // Helper: distance (km)
+    function getDistanceKm(lat1, lon1, lat2, lon2) {
+        if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    // Poll recent alerts and surface nearby ones
+    useEffect(() => {
+        let mountedFlag = true;
+        async function pollAlerts() {
+            try {
+                const res = await fetch('/api/alerts');
+                if (!res.ok) return;
+                const data = await res.json();
+                const arr = data.alerts || [];
+                const nearby = [];
+
+                for (const a of arr) {
+                    if (!a.id) continue;
+                    if (seenAlertIds.has(a.id)) continue;
+                    const distKm = getDistanceKm(mapCoords.lat, mapCoords.lng, a.lat, a.lon);
+                    if (distKm <= 0.7) { // within ~700m
+                        nearby.push({ ...a, distanceKm: distKm });
+                    }
+                }
+
+                if (mountedFlag && nearby.length > 0) {
+                    setNearbyAlerts((prev) => [...nearby, ...prev].slice(0, 6));
+                    setSeenAlertIds((prev) => {
+                        const next = new Set(prev);
+                        nearby.forEach(a => next.add(a.id));
+                        return next;
+                    });
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        // initial poll then interval
+        pollAlerts();
+        const id = setInterval(pollAlerts, 5000);
+        return () => { mountedFlag = false; clearInterval(id); };
+    }, [mapCoords, seenAlertIds]);
 
     const resolveLocationName = async (lat, lng) => {
         try {
@@ -196,6 +248,25 @@ export default function DashboardPage() {
                     <h3 style={{ marginBottom: '15px' }}>Quick Actions</h3>
                     <QuickActionGrid />
                 </div>
+
+                {nearbyAlerts.length > 0 && (
+                    <div className="glass-panel" style={{ padding: '14px' }}>
+                        <h3 style={{ marginBottom: '8px' }}>Nearby Alerts</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {nearbyAlerts.map((a) => (
+                                <div key={a.id} className="card" style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ fontSize: '.9rem' }}>
+                                        <div style={{ fontWeight: 700 }}>{a.message}</div>
+                                        <div style={{ fontSize: '.82rem', color: 'var(--neutral-text-light)' }}>{(a.distanceKm*0.621371).toFixed(2)} mi away</div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${a.lat},${a.lon}`} target="_blank" rel="noreferrer" className="btn-secondary">Navigate</a>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 <div className="glass-panel" style={{ padding: '20px' }}>
                     <h3 style={{ marginBottom: '15px' }}>Analysis</h3>
